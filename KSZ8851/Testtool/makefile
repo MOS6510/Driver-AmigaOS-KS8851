@@ -56,7 +56,7 @@ OBJECTS_TESTTOOL       = $(patsubst %.c, $(BUILDDIR)/%.o, $(SOURCE_TESTTOOL))
 
 .PHONY: all distribution
 
-all: builddir $(BUILDDIR)/testtool
+all: builddir $(BUILDDIR)/ks8851
      
 builddir:
 	@echo "Create build directories..."
@@ -72,7 +72,7 @@ install:
 		@sleep 1
 		$(AMIGA_EXPLORER) -s unittest ram:/unittest
 		
-$(BUILDDIR)/testtool:	$(OBJECTS_TESTTOOL)
+$(BUILDDIR)/ks8851:	$(OBJECTS_TESTTOOL)
 		@echo "Linking       " $@
 		@$(LINKER) $^ $(STRIP_OPTS) -o $@ -noixemul -Llibs -O2 -Wl,-Map,$@.map 
 

@@ -27,16 +27,6 @@
 #define BOOL char
 #define ULONG unsigned long
 
-/*
-//I can't include <stdio.h> for some reason so I need to define some little stuff here:
-typedef void FILE;
-int    setvbuf __P((void *, char *, int, size_t));
-#define  stdout   (__sF[1])
-extern FILE **__sF;
-#define  _IONBF   2 // setvbuf should set unbuffered
-FILE  *fopen __P((const char *, const char *));
-size_t fread __P((void *, size_t, size_t, FILE *));
-*/
 
 #define COLOR02   "\033[32m"
 #define COLOR03   "\033[33m"
@@ -51,9 +41,10 @@ size_t fread __P((void *, size_t, size_t, FILE *));
 // ###### EXTERNALS ########
 
 extern void exit(int);
-extern struct ExecBase * SysBase;
+//extern struct ExecBase * SysBase;
 
 ULONG ETHERNET_BASE_ADDRESS = (ULONG)0xd90000l;
+#define CMD_REGSITER_OFFSET 0x02
 
 /**
  * Should 16 bit access be swapped the the software?
@@ -62,25 +53,44 @@ BOOL swappingChipAccess       = false;
 BOOL switchChipToBigEndian    = false;
 BOOL switchChipToLittleEndian = false;
 
-
-u16 swap(u16 value) {
-   u16 h = (value >> 8) & 0xff;
-   u16 l = value & 0xff;
-   return l << 8 | h;
+/**
+ * Swaps a 16 bit value...
+ * @param value
+ */
+inline u16 swap(u16 value) {
+   register u16 h = (value >> 8) & 0xff;
+   register u16 l = value & 0xff;
+   return (l << 8) | h;
 }
-
 
 void iowrite16(u16 value, void __iomem *addr)
 {
-   *((u16*)addr) = swappingChipAccess ? swap(value) : value;
+   //Access to the command register MUST always be swapped due to a fix hardware swapping in design.
+   if ((ULONG)addr & CMD_REGSITER_OFFSET) {
+      //CMD register fixed swap
+      value = swap(value);
+   } else {
+      //DATA register optional swap:
+      value = swappingChipAccess ? swap(value) : value;
+   }
+
+   *((u16*)addr) = value;
+
    //printf("iowrite16(0x%x, 0x%lx)\n", value, addr);
 }
 
 unsigned int ioread16(void __iomem *addr)
 {
-   //printf("ioread16(0x%x)\n", addr);
    u16 value = *((u16*)addr);
-   return swappingChipAccess? swap(value) : value;
+
+   //Access to the command register MUST always be swapped due to a fix hardware swapping in design.
+   if ((ULONG) addr & CMD_REGSITER_OFFSET) {
+      //CMD register fixed swap
+      return swap(value);
+   } else {
+      //DATA register optional swap:
+      return swappingChipAccess ? swap(value) : value;
+   }
 }
 
 
@@ -88,6 +98,9 @@ int main(int argc, char * argv[])
 {
    printf("Amiga1200+ KSZ8851-16MLL Service Tool, version 1.0 (%s, %s)\n", __DATE__, __TIME__);
    printf("Memory base address of ethernet chip: 0x%lx\n", ETHERNET_BASE_ADDRESS);
+   printf("Data Register at: 0x%lx (16 bit)\n", ETHERNET_BASE_ADDRESS);
+   printf("CMD Register at:  0x%lx (16 bit)\n", ETHERNET_BASE_ADDRESS + CMD_REGSITER_OFFSET);
+
 
    int i;
 
@@ -104,17 +117,17 @@ int main(int argc, char * argv[])
             switchChipToLittleEndian = true;
          }
 
-         if (strcmp( argv[i], "swap") == 0) {
+         if (strcmp( argv[i], "swapdata") == 0) {
             swappingChipAccess = true;
          }
       }
    }
    else
    {
-      printf("usage: %s le eb swap\n"
+      printf("usage: %s le eb swapdata\n"
             " le: set chip to little endian mode\n"
             " eb: set chip to big endian mode\n"
-            " swap: swapping every 16 bit during chip access\n"
+            " swapdata: swapping every 16 bit data during chip access\n"
 
             , argv[0]);
       exit(0);
@@ -135,17 +148,17 @@ int main(int argc, char * argv[])
       ks.hw_addr_cmd = (u16*) (ETHERNET_BASE_ADDRESS + 2);
 
       if (swappingChipAccess) {
-         printf("%s is swapping every 16 bit access during access.\n", argv[0]);
+         printf("%s-tool is swapping every 16 bit data during chip access.\n", argv[0]);
       }
 
-      //Set to big endian...
+      //Set to big endian?
       if (switchChipToBigEndian) {
          u16 oldValue = ks_rdreg16(&ks, KS_RXFDPR);
          ks_wrreg16(&ks, KS_RXFDPR, oldValue | RXFDPR_EMS);
          printf("Switching chip to big endian mode.\n");
       }
 
-      //Set to big endian...
+      //Set to little endian?
       if (switchChipToLittleEndian) {
          u16 oldValue = ks_rdreg16(&ks, KS_RXFDPR);
          ks_wrreg16(&ks, KS_RXFDPR, oldValue & ~RXFDPR_EMS);
@@ -164,12 +177,19 @@ int main(int argc, char * argv[])
       }
       printf(" (value on register 0xc0 is 0x%04x, should be 0x887x)\n", (val & ~CIDER_REV_MASK));
 
+
+      //
+      // Get Link Status:
+      //
+      val = ks_rdreg16(&ks, KS_P1SR);
+      printf("Ethernet Link Status: %s\n", val & P1SR_LINK_GOOD ? "Up" : "Down" );
+
       //
       // readout registers...
       //
       int i;
-      printf("Dumping all 256 chip registers:\n");
-      for(i=0;i<256;i++)
+      printf("\nDumping all 128 16-bit registers:\n");
+      for(i=0;i<256;i+=2)
       {
          if (((i % 16) == 0)) {
             if (i != 0) {
@@ -177,7 +197,7 @@ int main(int argc, char * argv[])
             }
             printf("%04x: ", i);
          }
-         printf("%02x ", ks_rdreg8(&ks,i));
+         printf("%04x ", ks_rdreg16(&ks,i));
       }
       printf("\n");
    }
