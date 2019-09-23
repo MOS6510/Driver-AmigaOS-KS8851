@@ -1,6 +1,8 @@
 #ifndef UNIX_ADAPTER_H
 #define UNIX_ADAPTER_H
 
+//Doing stuff to make the linux driver parts compilable for AmigaOS
+
 #define u8 unsigned char
 #define u16 unsigned short
 #define u32 unsigned int

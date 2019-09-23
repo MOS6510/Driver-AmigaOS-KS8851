@@ -30,10 +30,10 @@
 #include <linux/of_net.h>
 */
 //AmigaOS
-#include "unix_adapter.h"
+#include "../servicetool/unix_adapter.h"
 
 
-#include "ks8851.h"
+#include "../servicetool/ks8851.h"
 
 #define  DRV_NAME "ks8851_mll"
 

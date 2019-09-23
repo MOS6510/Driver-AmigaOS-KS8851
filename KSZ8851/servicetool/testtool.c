@@ -15,8 +15,9 @@
 #include <time.h>
 #include <assert.h>
 #include <stdlib.h>
-#include "unix_adapter.h"
-#include "ks8851.h"
+
+#include "../servicetool/ks8851.h"
+#include "../servicetool/unix_adapter.h"
 
 
 //#include "libnix/libinit.h"
@@ -141,6 +142,7 @@ int main(int argc, char * argv[])
    }
 
    {
+      //Init network structure
       struct ks_net ks = {0};
       ks.cmd_reg_cache = 0;
       ks.cmd_reg_cache_int = 0;
@@ -161,8 +163,10 @@ int main(int argc, char * argv[])
       //Set to little endian?
       if (switchChipToLittleEndian) {
          u16 oldValue = ks_rdreg16(&ks, KS_RXFDPR);
+         oldValue = 0xffff;
+         printf("old value 0x%x, new value 0x%x", oldValue, oldValue & ~RXFDPR_EMS);
          ks_wrreg16(&ks, KS_RXFDPR, oldValue & ~RXFDPR_EMS);
-         printf("Switching chip to little mode.\n");
+         printf("Switching chip to little endian mode.\n");
       }
 
       //

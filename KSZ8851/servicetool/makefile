@@ -1,7 +1,7 @@
 #
 # Amiga 1200+ Ethernet driver KSZ8851 
 #
-# (C) Copyright 2019 by Heiko Prüssing
+# 2019 by Heiko Prüssing
 #
 
 SOURCE_TESTTOOL   = testtool.c ks8851_mll.c
@@ -11,7 +11,7 @@ COMPILE_MODE		+= -DDEBUG=1
 
 CC_OPTS           =  $(COMPILE_MODE)
 
-# Separat "strip" (from tool chain) command does not work but linker option works ????
+# "strip" (from tool chain) command does not work but linker option works ????
 # Use it to strip symbols from device only...
 STRIP_OPTS 		 = -s
 
@@ -48,7 +48,6 @@ CC_OPTS                      += -O2 -fstrength-reduce \
 CPPFLAGS								+= -O3 -D__cplusplus $(AOS_INCLUDES) $(OS_INCLUDES) -I. \
 										 -m68$(ARCH) 
                                                             
-#LINKER_OPTS                 = -Llibs -nostdlib -noixemul -lnix -lamiga -ldebug -lstubs 
 LINKER_OPTS                 = -Llibs -nostdlib -noixemul -lnix -lamiga -lstubs 
 
 OBJECTS_TESTTOOL       = $(patsubst %.c, $(BUILDDIR)/%.o, $(SOURCE_TESTTOOL))
@@ -75,8 +74,6 @@ install:
 $(BUILDDIR)/ks8851:	$(OBJECTS_TESTTOOL)
 		@echo "Linking       " $@
 		@$(LINKER) $^ $(STRIP_OPTS) -o $@ -noixemul -Llibs -O2 -Wl,-Map,$@.map 
-
-		
 
 clean:
 		rm -r -f -d $(BUILDDIR)/* *.o *.s *.aobj *.map mapfile
