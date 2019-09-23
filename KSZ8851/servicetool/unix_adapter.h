@@ -42,6 +42,7 @@ struct net_device {
    } stats;
    int irq;
    int flags;
+   char mc[8];
 };
 
 #define IRQ_NONE 0
@@ -53,10 +54,11 @@ struct net_device {
 #define IFF_ALLMULTI 1
 #define IFF_MULTICAST 2
 
-
-
-
 #define netdev_tx_t int
+
+struct netdev_hw_addr {
+   u8 addr[8];
+};
 
 struct sk_buff {
    u8 * data;
@@ -79,6 +81,26 @@ unsigned int ioread32(void __iomem *addr);
 void iowrite8(u8 value, void __iomem *addr);
 void iowrite16(u16 value, void __iomem *addr);
 
+
+//################## Somewhere from Linux kernel includes  ##################################################
+
+#define list_for_each_entry(pos, head, member)           \
+   for (pos = list_entry((head)->next, typeof(*pos), member);  \
+        &pos->member != (head);  \
+        pos = list_entry(pos->member.next, typeof(*pos), member))
+
+#define netdev_hw_addr_list_for_each(ha, l) \
+   list_for_each_entry(ha, &(l)->list, list)
+
+
+#define netdev_for_each_mc_addr(ha, dev) \
+   for(;;)
+
+/*\
+   netdev_hw_addr_list_for_each(ha, &(dev)->mc)*/
+
+
+//################## Hardware base ##########################################################################
 
 // Base address of the chip in Amiga memory address space
 #define ETHERNET_BASE_ADDRESS (u32)0xd90000l

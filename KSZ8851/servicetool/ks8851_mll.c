@@ -232,7 +232,7 @@ void ks_wrreg16(struct ks_net *ks, int offset, u16 value)
    iowrite16(value, ks->hw_addr);
 }
 
-#if 0
+
 
 /**
  * ks_inblk - read a block of data from QMU. This is called after sudo DMA mode enabled.
@@ -248,6 +248,8 @@ static inline void ks_inblk(struct ks_net *ks, u16 *wptr, u32 len)
       *wptr++ = (u16)ioread16(ks->hw_addr);
 }
 
+
+
 /**
  * ks_outblk - write data to QMU. This is called after sudo DMA mode enabled.
  * @ks: The chip information
@@ -261,6 +263,8 @@ static inline void ks_outblk(struct ks_net *ks, u16 *wptr, u32 len)
    while (len--)
       iowrite16(*wptr++, ks->hw_addr);
 }
+
+
 
 static void ks_disable_int(struct ks_net *ks)
 {
@@ -281,6 +285,8 @@ static inline u16 ks_tx_fifo_space(struct ks_net *ks)
 {
    return ks_rdreg16(ks, KS_TXMIR) & 0x1fff;
 }
+
+
 
 /**
  * ks_save_cmd_reg - save the command register from the cache.
@@ -307,6 +313,7 @@ static inline void ks_restore_cmd_reg(struct ks_net *ks)
    iowrite16(ks->cmd_reg_cache, ks->hw_addr_cmd);
 }
 
+
 /**
  * ks_set_powermode - set power mode of the device
  * @ks: The chip information
@@ -327,6 +334,7 @@ static void ks_set_powermode(struct ks_net *ks, unsigned pwrmode)
 
    ks_wrreg16(ks, KS_PMECR, pmecr);
 }
+
 
 /**
  * ks_read_config - read chip configuration of bus width.
@@ -950,6 +958,8 @@ static void ks_set_mac(struct ks_net *ks, u8 *data)
       ks_start_rx(ks);
 }
 
+#if 0
+
 static int ks_set_mac_address(struct net_device *netdev, void *paddr)
 {
    struct ks_net *ks = netdev_priv(netdev);
@@ -963,6 +973,7 @@ static int ks_set_mac_address(struct net_device *netdev, void *paddr)
    ks_set_mac(ks, da);
    return 0;
 }
+
 
 static int ks_net_ioctl(struct net_device *netdev, struct ifreq *req, int cmd)
 {
