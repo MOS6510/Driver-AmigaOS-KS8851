@@ -15,7 +15,7 @@ CC_OPTS           =  $(COMPILE_MODE)
 # Use it to strip symbols from device only...
 STRIP_OPTS 		 = -s
 
-AMIGA_EXPLORER = ./Software_Tests_and_Tools/lxamiga.pl
+#AMIGA_EXPLORER = ./Software_Tests_and_Tools/lxamiga.pl
 
 #If not given via command line build for "68000"
 ifeq ($(ARCH),)
@@ -62,14 +62,14 @@ builddir:
 	@mkdir -p $(BUILDDIR)
 
 # Installs device on real Amiga via "Amiga Explorer"
-install:
-		$(AMIGA_EXPLORER) -l || true
-		@sleep 1
-		$(AMIGA_EXPLORER) -u DEVS:/networks/$(DEVICE_NAME) || true
-		@sleep 1
-		$(AMIGA_EXPLORER) -s $(DEVICE_NAME) DEVS:/networks/$(DEVICE_NAME)
-		@sleep 1
-		$(AMIGA_EXPLORER) -s unittest ram:/unittest
+#install:
+#		$(AMIGA_EXPLORER) -l || true
+#		@sleep 1
+#		$(AMIGA_EXPLORER) -u DEVS:/networks/$(DEVICE_NAME) || true
+#		@sleep 1
+#		$(AMIGA_EXPLORER) -s $(DEVICE_NAME) DEVS:/networks/$(DEVICE_NAME)
+#		@sleep 1
+#		$(AMIGA_EXPLORER) -s unittest ram:/unittest
 		
 $(BUILDDIR)/ks8851:	$(OBJECTS_TESTTOOL)
 		@echo "Linking       " $@

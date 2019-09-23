@@ -72,6 +72,7 @@ struct sk_buff {
 
 #define irqreturn_t
 
+
 unsigned int ioread8(void __iomem *addr);
 unsigned int ioread16(void __iomem *addr);
 unsigned int ioread32(void __iomem *addr);
@@ -79,54 +80,8 @@ void iowrite8(u8 value, void __iomem *addr);
 void iowrite16(u16 value, void __iomem *addr);
 
 
-#define MAX_MCAST_LST         32
-#define HW_MCAST_SIZE         8
-
-/* Receive multiplex framer header info */
-struct type_frame_head {
-   u16   sts;         /* Frame status */
-   u16   len;         /* Byte count */
-};
-
-union ks_tx_hdr {
-   u8      txb[4];
-   __le16  txw[2];
-};
-
-struct ks_net {
-   struct net_device *netdev;
-   void __iomem      *hw_addr;
-   void __iomem      *hw_addr_cmd;
-   union ks_tx_hdr      txh ____cacheline_aligned;
-   struct mutex         lock; /* spinlock to be interrupt safe */
-   struct platform_device *pdev;
-   struct mii_if_info   mii;
-   struct type_frame_head  *frame_head_info;
-   spinlock_t     statelock;
-   u32         msg_enable;
-   u32         frame_cnt;
-   int         bus_width;
-
-   u16         rc_rxqcr;
-   u16         rc_txcr;
-   u16         rc_ier;
-   u16         sharedbus;
-   u16         cmd_reg_cache;
-   u16         cmd_reg_cache_int;
-   u16         promiscuous;
-   u16         all_mcast;
-   u16         mcast_lst_size;
-   u8       mcast_lst[MAX_MCAST_LST][ETH_ALEN];
-   u8       mcast_bits[HW_MCAST_SIZE];
-   u8       mac_addr[6];
-   u8                      fid;
-   u8       extra_byte;
-   u8       enabled;
-};
-
-extern u8 ks_rdreg8(struct ks_net *ks, int offset);
-u16 ks_rdreg16(struct ks_net *ks, int offset);
-void ks_wrreg8(struct ks_net *ks, int offset, u8 value);
-void ks_wrreg16(struct ks_net *ks, int offset, u16 value);
+// Base address of the chip in Amiga memory address space
+#define ETHERNET_BASE_ADDRESS (u32)0xd90000l
+#define CMD_REGSITER_OFFSET 0x02
 
 #endif

@@ -8,6 +8,10 @@
  * KS8851 16bit MLL chip from Micrel Inc.
  */
 
+/*
+ * HP 2019, adopted to AmigaOS
+ */
+
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 /*
@@ -29,6 +33,7 @@
 #include <linux/of_device.h>
 #include <linux/of_net.h>
 */
+
 //AmigaOS
 #include "../servicetool/unix_adapter.h"
 
@@ -64,7 +69,7 @@ static u8 KS_DEFAULT_MAC_ADDRESS[] = { 0x00, 0x10, 0xA1, 0x86, 0x95, 0x11 };
  * access to individual bytes, and to allow 16bit accesses
  * with 16bit alignment.
  */
-#if 0
+#if 1
 union ks_tx_hdr {
    u8      txb[4];
    __le16  txw[2];
@@ -1386,4 +1391,22 @@ module_param_named(message, msg_enable, int, 0);
 MODULE_PARM_DESC(message, "Message verbosity level (0=none, 31=all)"
 
 #endif
+
+
+
+/**
+ * HP: Q&D: Init stuff for AmigaOS
+ * @return
+ */
+struct ks_net * ks8851_init()
+{
+   //Init network structure
+   static struct ks_net ks = {0};
+   ks.cmd_reg_cache = 0;
+   ks.cmd_reg_cache_int = 0;
+   ks.hw_addr     = (u16*)(ETHERNET_BASE_ADDRESS + 0);
+   ks.hw_addr_cmd = (u16*)(ETHERNET_BASE_ADDRESS + 2);
+   return &ks;
+}
+
 

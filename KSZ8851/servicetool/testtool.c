@@ -1,8 +1,7 @@
 /**
- * Testtool for Ethernet chip KSZ8851 at Amiga1200+ project.
+ * Service tool for Ethernet chip KSZ8851 Amiga1200+ project.
  * Author: Heiko Pruessing
  */
-
 
 #include <clib/alib_protos.h>
 #include <clib/alib_stdio_protos.h>
@@ -19,33 +18,26 @@
 #include "../servicetool/ks8851.h"
 #include "../servicetool/unix_adapter.h"
 
-
-//#include "libnix/libinit.h"
-
-#define BYTE char
-#define UBYTE unsigned char
-
-#define BOOL char
-#define ULONG unsigned long
-
+// ########################################## LOCAL MACROS ##################################################
 
 #define COLOR02   "\033[32m"
 #define COLOR03   "\033[33m"
 #define NORMAL    "\033[0m"
 
-
-// ######## LOCAL MACROS ########
-
 #define TEST_ENTERED() printf("%s...", __func__);
 #define TEST_LEAVE(a)  printf("%s\n", (a) ? "success" : "failed!");
 
-// ###### EXTERNALS ########
+// ########################################## EXTERNALS #####################################################
 
-extern void exit(int);
-//extern struct ExecBase * SysBase;
+//Dummy forward private linux driver struct. Real defined in the driver itself.
+struct ks_net;
 
-ULONG ETHERNET_BASE_ADDRESS = (ULONG)0xd90000l;
-#define CMD_REGSITER_OFFSET 0x02
+extern void ks_wrreg16(struct ks_net *ks, int offset, u16 value);
+extern u16 ks_rdreg16(struct ks_net *ks, int offset);
+extern void ks_wrreg16(struct ks_net *ks, int offset, u16 value);
+
+extern struct ks_net * ks8851_init();
+
 
 /**
  * Should 16 bit access be swapped the the software?
@@ -55,22 +47,31 @@ BOOL switchChipToBigEndian    = false;
 BOOL switchChipToLittleEndian = false;
 
 /**
- * Swaps a 16 bit value...
+ * Swaps a 16 bit value...0x1234 => 0x3412
  * @param value
  */
-inline u16 swap(u16 value) {
+inline u16 swap(u16 value)
+{
    register u16 h = (value >> 8) & 0xff;
    register u16 l = value & 0xff;
    return (l << 8) | h;
 }
 
+/**
+ * Support function writing register
+ * @param value
+ * @param addr
+ */
 void iowrite16(u16 value, void __iomem *addr)
 {
    //Access to the command register MUST always be swapped due to a fix hardware swapping in design.
-   if ((ULONG)addr & CMD_REGSITER_OFFSET) {
+   if ((ULONG)addr & CMD_REGSITER_OFFSET)
+   {
       //CMD register fixed swap
       value = swap(value);
-   } else {
+   }
+   else
+   {
       //DATA register optional swap:
       value = swappingChipAccess ? swap(value) : value;
    }
@@ -80,15 +81,23 @@ void iowrite16(u16 value, void __iomem *addr)
    //printf("iowrite16(0x%x, 0x%lx)\n", value, addr);
 }
 
+/**
+ * Support function reading registers
+ * @param addr
+ * @return
+ */
 unsigned int ioread16(void __iomem *addr)
 {
    u16 value = *((u16*)addr);
 
    //Access to the command register MUST always be swapped due to a fix hardware swapping in design.
-   if ((ULONG) addr & CMD_REGSITER_OFFSET) {
+   if ((ULONG) addr & CMD_REGSITER_OFFSET)
+   {
       //CMD register fixed swap
       return swap(value);
-   } else {
+   }
+   else
+   {
       //DATA register optional swap:
       return swappingChipAccess ? swap(value) : value;
    }
@@ -97,28 +106,30 @@ unsigned int ioread16(void __iomem *addr)
 
 int main(int argc, char * argv[])
 {
+   int i;
+
    printf("Amiga1200+ KSZ8851-16MLL Service Tool, version 1.0 (%s, %s)\n", __DATE__, __TIME__);
    printf("Memory base address of ethernet chip: 0x%lx\n", ETHERNET_BASE_ADDRESS);
    printf("Data Register at: 0x%lx (16 bit)\n", ETHERNET_BASE_ADDRESS);
    printf("CMD Register at:  0x%lx (16 bit)\n", ETHERNET_BASE_ADDRESS + CMD_REGSITER_OFFSET);
-
-
-   int i;
 
    //check command line...
    if (argc > 1)
    {
       for(i=1;i<argc;i++)
       {
-         if (strcmp( argv[i], "be") == 0) {
+         if (strcmp( argv[i], "be") == 0)
+         {
             switchChipToBigEndian = true;
          }
 
-         if (strcmp( argv[i], "le") == 0) {
+         if (strcmp( argv[i], "le") == 0)
+         {
             switchChipToLittleEndian = true;
          }
 
-         if (strcmp( argv[i], "swapdata") == 0) {
+         if (strcmp( argv[i], "swapdata") == 0)
+         {
             swappingChipAccess = true;
          }
       }
@@ -143,11 +154,7 @@ int main(int argc, char * argv[])
 
    {
       //Init network structure
-      struct ks_net ks = {0};
-      ks.cmd_reg_cache = 0;
-      ks.cmd_reg_cache_int = 0;
-      ks.hw_addr = (u16*)(ETHERNET_BASE_ADDRESS + 0);
-      ks.hw_addr_cmd = (u16*) (ETHERNET_BASE_ADDRESS + 2);
+      struct ks_net * ks = ks8851_init();
 
       if (swappingChipAccess) {
          printf("%s-tool is swapping every 16 bit data during chip access.\n", argv[0]);
@@ -155,17 +162,17 @@ int main(int argc, char * argv[])
 
       //Set to big endian?
       if (switchChipToBigEndian) {
-         u16 oldValue = ks_rdreg16(&ks, KS_RXFDPR);
-         ks_wrreg16(&ks, KS_RXFDPR, oldValue | RXFDPR_EMS);
+         u16 oldValue = ks_rdreg16(ks, KS_RXFDPR);
+         ks_wrreg16(ks, KS_RXFDPR, oldValue | RXFDPR_EMS);
          printf("Switching chip to big endian mode.\n");
       }
 
       //Set to little endian?
       if (switchChipToLittleEndian) {
-         u16 oldValue = ks_rdreg16(&ks, KS_RXFDPR);
+         u16 oldValue = ks_rdreg16(ks, KS_RXFDPR);
          oldValue = 0xffff;
          printf("old value 0x%x, new value 0x%x", oldValue, oldValue & ~RXFDPR_EMS);
-         ks_wrreg16(&ks, KS_RXFDPR, oldValue & ~RXFDPR_EMS);
+         ks_wrreg16(ks, KS_RXFDPR, oldValue & ~RXFDPR_EMS);
          printf("Switching chip to little endian mode.\n");
       }
 
@@ -173,7 +180,7 @@ int main(int argc, char * argv[])
       // Chip probe
       //
       printf("Chip probe: ");
-      u16 val = ks_rdreg16(&ks, KS_CIDER);
+      u16 val = ks_rdreg16(ks, KS_CIDER);
       if ((val & ~CIDER_REV_MASK) != CIDER_ID) {
          printf("failed");
       } else {
@@ -185,7 +192,7 @@ int main(int argc, char * argv[])
       //
       // Get Link Status:
       //
-      val = ks_rdreg16(&ks, KS_P1SR);
+      val = ks_rdreg16(ks, KS_P1SR);
       printf("Ethernet Link Status: %s\n", val & P1SR_LINK_GOOD ? "Up" : "Down" );
 
       //
@@ -201,7 +208,7 @@ int main(int argc, char * argv[])
             }
             printf("%04x: ", i);
          }
-         printf("%04x ", ks_rdreg16(&ks,i));
+         printf("%04x ", ks_rdreg16(ks,i));
       }
       printf("\n");
    }
