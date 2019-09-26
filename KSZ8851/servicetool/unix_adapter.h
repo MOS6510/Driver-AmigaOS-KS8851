@@ -1,7 +1,9 @@
 #ifndef UNIX_ADAPTER_H
 #define UNIX_ADAPTER_H
 
-//Doing stuff to make the linux driver parts compilable for AmigaOS
+/**
+ * Defining some stuff to make the linux driver compile for AmigaOS.
+ */
 
 #define u8 unsigned char
 #define u16 unsigned short
@@ -21,6 +23,12 @@ struct mii_if_info {
 typedef struct {
    u8 dummy;
 } spinlock_t;
+
+struct sockaddr {
+   u8 sa_data[4];
+};
+
+#define BMCR_FULLDPLX 1
 
 #define ETH_ALEN 8
 
@@ -43,6 +51,8 @@ struct net_device {
    int irq;
    int flags;
    char mc[8];
+   char dev_addr[8];
+   int addr_len;
 };
 
 #define IRQ_NONE 0
@@ -74,12 +84,17 @@ struct sk_buff {
 
 #define irqreturn_t
 
-
 unsigned int ioread8(void __iomem *addr);
 unsigned int ioread16(void __iomem *addr);
 unsigned int ioread32(void __iomem *addr);
 void iowrite8(u8 value, void __iomem *addr);
 void iowrite16(u16 value, void __iomem *addr);
+
+#define MODULE_DESCRIPTION(x)
+#define MODULE_AUTHOR(c);
+#define MODULE_LICENSE(x);
+#define module_param_named(a,b,c,d);
+#define MODULE_PARM_DESC(a,b)
 
 
 //################## Somewhere from Linux kernel includes  ##################################################
@@ -93,17 +108,87 @@ void iowrite16(u16 value, void __iomem *addr);
    list_for_each_entry(ha, &(l)->list, list)
 
 
-#define netdev_for_each_mc_addr(ha, dev) \
-   for(;;)
+#define netdev_for_each_mc_addr(ha, dev) for(;;)
+#define SET_NETDEV_DEV(a,b)
+#define ENOMEM 1
+#define alloc_etherdev(size) (0l)
+#define netdev_priv(net_device) (0l)
+
 
 /*\
    netdev_hw_addr_list_for_each(ha, &(dev)->mc)*/
 
+#define bool u8
+enum probe_type {
+   DUMMY = 1
+};
+
+struct module {
+};
+
+struct device {
+};
+
+struct platform_device_id {
+};
+
+struct platform_device {
+
+};
+
+#define pm_message_t int
+
+struct device_driver {
+   const char     *name;
+   struct bus_type      *bus;
+
+   struct module     *owner;
+   const char     *mod_name;  /* used for built-in modules */
+
+//   bool suppress_bind_attrs;  /* disables bind/unbind via sysfs */
+   enum probe_type probe_type;
+
+   const struct of_device_id  *of_match_table;
+   const struct acpi_device_id   *acpi_match_table;
+
+   int (*probe) (struct device *dev);
+   int (*remove) (struct device *dev);
+   void (*shutdown) (struct device *dev);
+   int (*suspend) (struct device *dev, pm_message_t state);
+   int (*resume) (struct device *dev);
+   const struct attribute_group **groups;
+
+   const struct dev_pm_ops *pm;
+   void (*coredump) (struct device *dev);
+
+   struct driver_private *p;
+};
+
+
+struct platform_driver {
+   int (*probe)(struct platform_device *);
+   int (*remove)(struct platform_device *);
+   void (*shutdown)(struct platform_device *);
+   int (*suspend)(struct platform_device *, pm_message_t state);
+   int (*resume)(struct platform_device *);
+   struct device_driver driver;
+   const struct platform_device_id *id_table;
+   bool prevent_deferred_probe;
+};
+
 
 //################## Hardware base ##########################################################################
 
-// Base address of the chip in Amiga memory address space
+// Base address of the KSZ8851 ethernet chip in Amiga memory address space
 #define ETHERNET_BASE_ADDRESS (u32)0xd90000l
-#define CMD_REGSITER_OFFSET 0x02
+#define KS8851_REG_DATA_OFFSET 0x00
+#define KS8851_REG_CMD_OFFSET  0x02
+
+
+
+
+#define devm_platform_ioremap_resource(a,b) (u32)(ETHERNET_BASE_ADDRESS + KS8851_REG_DATA_OFFSET)
+
+
 
 #endif

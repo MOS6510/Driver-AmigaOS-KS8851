@@ -14,7 +14,7 @@
 				</extensions>
 			</storageModule>
 			<storageModule moduleId="cdtBuildSystem" version="4.0.0">
-				<configuration buildProperties="" description="" id="cdt.managedbuild.toolchain.gnu.cross.base.1332453092" name="Default" parent="org.eclipse.cdt.build.core.emptycfg">
+				<configuration artifactName="${ProjName}" buildProperties="" description="" id="cdt.managedbuild.toolchain.gnu.cross.base.1332453092" name="Default" parent="org.eclipse.cdt.build.core.emptycfg">
 					<folderInfo id="cdt.managedbuild.toolchain.gnu.cross.base.1332453092.1179037571" name="/" resourcePath="">
 						<toolChain id="cdt.managedbuild.toolchain.gnu.cross.base.1960008484" name="Cross GCC" superClass="cdt.managedbuild.toolchain.gnu.cross.base">
 							<option id="cdt.managedbuild.option.gnu.cross.prefix.1652292947" name="Prefix" superClass="cdt.managedbuild.option.gnu.cross.prefix"/>
@@ -28,6 +28,7 @@
 								<option id="gnu.c.compiler.option.preprocessor.def.symbols.252271210" name="Defined symbols (-D)" superClass="gnu.c.compiler.option.preprocessor.def.symbols" useByScannerDiscovery="false" valueType="definedSymbols">
 									<listOptionValue builtIn="false" value="BOOL=u8"/>
 									<listOptionValue builtIn="false" value="ULONG=u32"/>
+									<listOptionValue builtIn="false" value="bool=u8"/>
 								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.1730044590" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 							</tool>
@@ -99,6 +100,7 @@
 	</storageModule>
 	<storageModule moduleId="org.eclipse.cdt.core.LanguageSettingsProviders"/>
 	<storageModule moduleId="refreshScope" versionNumber="2">
+		<configuration configurationName="AmigaOS"/>
 		<configuration configurationName="Default">
 			<resource resourceType="PROJECT" workspacePath="/Amiga1200Plus"/>
 		</configuration>

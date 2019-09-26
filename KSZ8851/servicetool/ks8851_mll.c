@@ -958,7 +958,6 @@ static void ks_set_mac(struct ks_net *ks, u8 *data)
       ks_start_rx(ks);
 }
 
-#if 0
 
 static int ks_set_mac_address(struct net_device *netdev, void *paddr)
 {
@@ -974,6 +973,7 @@ static int ks_set_mac_address(struct net_device *netdev, void *paddr)
    return 0;
 }
 
+#if 0
 
 static int ks_net_ioctl(struct net_device *netdev, struct ifreq *req, int cmd)
 {
@@ -984,6 +984,8 @@ static int ks_net_ioctl(struct net_device *netdev, struct ifreq *req, int cmd)
 
    return generic_mii_ioctl(&ks->mii, if_mii(req), cmd, NULL);
 }
+
+
 
 static const struct net_device_ops ks_netdev_ops = {
    .ndo_open      = ks_net_open,
@@ -1057,6 +1059,8 @@ static const struct ethtool_ops ks_ethtool_ops = {
    .set_link_ksettings = ks_set_link_ksettings,
 };
 
+
+
 /* MII interface controls */
 
 /**
@@ -1086,6 +1090,8 @@ static int ks_phy_reg(int reg)
 
    return 0x0;
 }
+
+#endif
 
 /**
  * ks_phy_read - MII interface PHY register read.
@@ -1119,6 +1125,8 @@ static int ks_phy_read(struct net_device *netdev, int phy_addr, int reg)
    return result;
 }
 
+
+
 static void ks_phy_write(struct net_device *netdev,
               int phy, int reg, int value)
 {
@@ -1132,6 +1140,8 @@ static void ks_phy_write(struct net_device *netdev,
       mutex_unlock(&ks->lock);
    }
 }
+
+
 
 /**
  * ks_read_selftest - read the selftest memory info.
@@ -1165,6 +1175,8 @@ static int ks_read_selftest(struct ks_net *ks)
    netdev_info(ks->netdev, "the selftest passes\n");
    return ret;
 }
+
+
 
 static void ks_setup(struct ks_net *ks)
 {
@@ -1213,6 +1225,7 @@ static void ks_setup(struct ks_net *ks)
 }  /*ks_setup */
 
 
+
 static void ks_setup_int(struct ks_net *ks)
 {
    ks->rc_ier = 0x00;
@@ -1222,6 +1235,8 @@ static void ks_setup_int(struct ks_net *ks)
    /* Enables the interrupts of the hardware. */
    ks->rc_ier = (IRQ_LCI | IRQ_TXI | IRQ_RXI);
 }  /* ks_setup_int */
+
+#if 0
 
 static int ks_hw_init(struct ks_net *ks)
 {
@@ -1239,6 +1254,8 @@ static int ks_hw_init(struct ks_net *ks)
    return true;
 }
 
+
+
 #if defined(CONFIG_OF)
 static const struct of_device_id ks8851_ml_dt_ids[] = {
    { .compatible = "micrel,ks8851-mll" },
@@ -1247,6 +1264,9 @@ static const struct of_device_id ks8851_ml_dt_ids[] = {
 MODULE_DEVICE_TABLE(of, ks8851_ml_dt_ids);
 #endif
 
+#endif
+
+#if 0
 static int ks8851_probe(struct platform_device *pdev)
 {
    int err;
@@ -1374,6 +1394,10 @@ err_free:
    return err;
 }
 
+#endif
+
+#if 0
+
 static int ks8851_remove(struct platform_device *pdev)
 {
    struct net_device *netdev = platform_get_drvdata(pdev);
@@ -1383,25 +1407,28 @@ static int ks8851_remove(struct platform_device *pdev)
    return 0;
 
 }
+#endif
 
 static struct platform_driver ks8851_platform_driver = {
    .driver = {
       .name = DRV_NAME,
-      .of_match_table   = of_match_ptr(ks8851_ml_dt_ids),
-   },
-   .probe = ks8851_probe,
-   .remove = ks8851_remove,
+//      .of_match_table   = of_match_ptr(ks8851_ml_dt_ids),
+   }
+//   .probe = ks8851_probe,
+//   .remove = ks8851_remove,
 };
 
 module_platform_driver(ks8851_platform_driver);
+
+
 
 MODULE_DESCRIPTION("KS8851 MLL Network driver");
 MODULE_AUTHOR("David Choi <david.choi@micrel.com>");
 MODULE_LICENSE("GPL");
 module_param_named(message, msg_enable, int, 0);
-MODULE_PARM_DESC(message, "Message verbosity level (0=none, 31=all)"
+MODULE_PARM_DESC(message, "Message verbosity level (0=none, 31=all)")
 
-#endif
+
 
 
 
@@ -1412,11 +1439,10 @@ MODULE_PARM_DESC(message, "Message verbosity level (0=none, 31=all)"
 struct ks_net * ks8851_init()
 {
    //Init network structure
-   static struct ks_net ks = {0};
-   ks.cmd_reg_cache = 0;
-   ks.cmd_reg_cache_int = 0;
-   ks.hw_addr     = (u16*)(ETHERNET_BASE_ADDRESS + 0);
-   ks.hw_addr_cmd = (u16*)(ETHERNET_BASE_ADDRESS + 2);
+   static struct ks_net ks;
+   memset(&ks, sizeof(ks),0);
+   ks.hw_addr     = (u16*)(ETHERNET_BASE_ADDRESS + KS8851_REG_DATA_OFFSET);
+   ks.hw_addr_cmd = (u16*)(ETHERNET_BASE_ADDRESS + KS8851_REG_CMD_OFFSET );
    return &ks;
 }
 

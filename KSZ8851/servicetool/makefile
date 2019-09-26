@@ -60,16 +60,6 @@ all: builddir $(BUILDDIR)/ks8851
 builddir:
 	@echo "Create build directories..."
 	@mkdir -p $(BUILDDIR)
-
-# Installs device on real Amiga via "Amiga Explorer"
-#install:
-#		$(AMIGA_EXPLORER) -l || true
-#		@sleep 1
-#		$(AMIGA_EXPLORER) -u DEVS:/networks/$(DEVICE_NAME) || true
-#		@sleep 1
-#		$(AMIGA_EXPLORER) -s $(DEVICE_NAME) DEVS:/networks/$(DEVICE_NAME)
-#		@sleep 1
-#		$(AMIGA_EXPLORER) -s unittest ram:/unittest
 		
 $(BUILDDIR)/ks8851:	$(OBJECTS_TESTTOOL)
 		@echo "Linking       " $@

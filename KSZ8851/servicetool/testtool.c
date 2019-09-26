@@ -65,7 +65,7 @@ inline u16 swap(u16 value)
 void iowrite16(u16 value, void __iomem *addr)
 {
    //Access to the command register MUST always be swapped due to a fix hardware swapping in design.
-   if ((ULONG)addr & CMD_REGSITER_OFFSET)
+   if ((ULONG)addr & KS8851_REG_CMD_OFFSET)
    {
       //CMD register fixed swap
       value = swap(value);
@@ -91,7 +91,7 @@ unsigned int ioread16(void __iomem *addr)
    u16 value = *((u16*)addr);
 
    //Access to the command register MUST always be swapped due to a fix hardware swapping in design.
-   if ((ULONG) addr & CMD_REGSITER_OFFSET)
+   if ((ULONG) addr & KS8851_REG_CMD_OFFSET)
    {
       //CMD register fixed swap
       return swap(value);
@@ -110,8 +110,8 @@ int main(int argc, char * argv[])
 
    printf("Amiga1200+ KSZ8851-16MLL Service Tool, version 1.0 (%s, %s)\n", __DATE__, __TIME__);
    printf("Memory base address of ethernet chip: 0x%lx\n", ETHERNET_BASE_ADDRESS);
-   printf("Data Register at: 0x%lx (16 bit)\n", ETHERNET_BASE_ADDRESS);
-   printf("CMD Register at:  0x%lx (16 bit)\n", ETHERNET_BASE_ADDRESS + CMD_REGSITER_OFFSET);
+   printf("Data Register at: 0x%lx (16 bit)\n", ETHERNET_BASE_ADDRESS + KS8851_REG_DATA_OFFSET);
+   printf("CMD Register at:  0x%lx (16 bit)\n", ETHERNET_BASE_ADDRESS + KS8851_REG_CMD_OFFSET );
 
    //check command line...
    if (argc > 1)
