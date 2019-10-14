@@ -1059,7 +1059,7 @@ static const struct ethtool_ops ks_ethtool_ops = {
    .set_link_ksettings = ks_set_link_ksettings,
 };
 
-
+#endif
 
 /* MII interface controls */
 
@@ -1091,7 +1091,7 @@ static int ks_phy_reg(int reg)
    return 0x0;
 }
 
-#endif
+
 
 /**
  * ks_phy_read - MII interface PHY register read.
