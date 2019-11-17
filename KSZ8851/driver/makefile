@@ -1,23 +1,26 @@
 #
-# Amiga SANA-II Amiga 1200Plus KSZ8851 device driver 
+# Amiga SANA-II Amiga 1200Plus KSZ8851 network device driver 
 #
-# (C) 2019 Heiko Prüssing <heiko@heiko-pruessing.de>
+# (c) 2019 Heiko Prüssing <heiko@heiko-pruessing.de>
 #
 
-SOURCE_DEVICE = $(wildcard *.c)								   
-DEVICE_NAME       = ksz8851.device
+DEVICE_NAME   = ksz8851.device
+		   
+#CFLAGS		+= -DDEBUG=1
 
-#CC_OPTS		+= -DDEBUG=1
+# Strip symbols if needed...
+#LDOPTS += -s
 
-# Separat "strip" (from tool chain) command does not work but linker option works ????
-# Use it to strip symbols from device only...
-STRIP_OPTS 		 = -s
-
+# Build subdirectory for every supported microprocessor (68000-68080)
 BUILDDIR=build/build-$(ARCH)
+                            
+SRC = $(wildcard *.c)
+OBJS = $(patsubst %.c, $(BUILDDIR)/%.o, $(SRC))                            
                                                             
-LD_OPTS += -L${ROOT_DIR}/libs -nostdlib -noixemul -lnix -lamiga -ldebug -lstubs 
-
-OBJECTS_DEVICE         = $(patsubst %.c, $(BUILDDIR)/%.o, $(SOURCE_DEVICE))
+LDOPTS += -noixemul -nostartfiles -lnix -lamiga -ldebug -lstubs
+LDOPTS += -Wl,-Map,$@.map -Wl,--cref 
+CFLAGS += -Wno-pointer-sign
+#LDOPTS += --verbose
 
 .PHONY: all distribution
 
@@ -36,19 +39,19 @@ distribution:
 	
 device: $(BUILDDIR)/$(DEVICE_NAME)
 
-		
-$(BUILDDIR)/$(DEVICE_NAME):	$(OBJECTS_DEVICE)
+$(BUILDDIR)/$(DEVICE_NAME):	$(OBJS)
 		@echo "Linking       " $@
-		@$(LINKER) $^ $(STRIP_OPTS) -o $@.$(ARCH) -nostdlib $(LD_OPTS) -Wl,-Map,$@.map -Wl,--cref
+		@$(LD) $^ -o $@.$(ARCH) $(LDOPTS) 
+		ls -la $@.$(ARCH)
 		
 clean:
-		rm -r -f -d *.o *.s *.aobj *.device *.map mapfile $(BUILDDIR)/*.o $(BUILDDIR)/*.device
+		@rm -r -f -d *.o *.s *.aobj *.device *.map mapfile $(BUILDDIR)/*.o $(BUILDDIR)/*.device
+		@rm -fr $(BUILDDIR)
 
-#.c.o:
 $(BUILDDIR)/%.o:%.c
 	@echo "Compiling C   " $< " (68"$(ARCH)")"
-	@$(CC) -c -nostdinc $(CC_OPTS) -o $@ $< 
+	@$(CC) -c $(CFLAGS) -o $@ $< 
 
 .c.s:
-	$(CC) -S -nostdinc $(CC_OPTS) $(COMPILE_MODE) -o $@ $< 
+	$(CC) -S -nostdinc $(CFLAGS) -o $@ $< 
 	
