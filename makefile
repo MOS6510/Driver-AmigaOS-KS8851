@@ -11,6 +11,7 @@ AR                            = $(CCPATH)/bin/m68k-amigaos-ar
 RANLIB							   = $(CCPATH)/bin/m68k-amigaos-ranlib
 LD                       		= $(CCPATH)/bin/m68k-amigaos-gcc
 SHELL                         = sh
+XDFTOOL								= /usr/local/bin/xdftool
 
 INC_SRCH_PATH						:= -I$(PROJ_ROOT)/os_includes/sana
 
@@ -30,14 +31,14 @@ ifeq ($(ARCH),)
 	ARCH=000
 endif	
                           
-export CCPATH CC LD CXX CFLAGS LDFLAGS RANLIB LD AOS_INCLUDES OS_INCLUDES CFLAGS ARCH PROJ_ROOT
+export CCPATH CC LD CXX CFLAGS LDFLAGS RANLIB LD AOS_INCLUDES OS_INCLUDES CFLAGS ARCH PROJ_ROOT XDFTOOL
 
 all:
-	@#@$(MAKE) -C KSZ8851/servicetool
+	@$(MAKE) -C KSZ8851/servicetool
 	@$(MAKE) -C KSZ8851/driver
 
 .PHONY: clean
 
 clean:
-	#@$(MAKE) -C KSZ8851/servicetool clean
+	@$(MAKE) -C KSZ8851/servicetool clean
 	@$(MAKE) -C KSZ8851/driver clean

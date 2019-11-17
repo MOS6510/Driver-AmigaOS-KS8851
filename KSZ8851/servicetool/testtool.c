@@ -18,6 +18,9 @@
 #include "../servicetool/ks8851.h"
 #include "../servicetool/unix_adapter.h"
 
+int build_number = 1;
+
+
 // ########################################## LOCAL MACROS ##################################################
 
 #define COLOR02   "\033[32m"
@@ -42,7 +45,8 @@ extern struct ks_net * ks8851_init();
 /**
  * Should 16 bit access be swapped the the software?
  */
-BOOL swappingChipAccess       = false;
+BOOL swappingDataRegValue     = false;
+BOOL swappingCmdRegValue      = false;
 BOOL switchChipToBigEndian    = false;
 BOOL switchChipToLittleEndian = false;
 
@@ -68,12 +72,12 @@ void iowrite16(u16 value, void __iomem *addr)
    if ((ULONG)addr & KS8851_REG_CMD_OFFSET)
    {
       //CMD register fixed swap
-      value = swap(value);
+      value = swappingCmdRegValue ? swap(value) : value;
    }
    else
    {
       //DATA register optional swap:
-      value = swappingChipAccess ? swap(value) : value;
+      value = swappingDataRegValue ? swap(value) : value;
    }
 
    *((u16*)addr) = value;
@@ -94,12 +98,12 @@ unsigned int ioread16(void __iomem *addr)
    if ((ULONG) addr & KS8851_REG_CMD_OFFSET)
    {
       //CMD register fixed swap
-      return swap(value);
+      return swappingCmdRegValue ? swap(value) : value;
    }
    else
    {
       //DATA register optional swap:
-      return swappingChipAccess ? swap(value) : value;
+      return swappingDataRegValue ? swap(value) : value;
    }
 }
 
@@ -108,7 +112,7 @@ int main(int argc, char * argv[])
 {
    int i;
 
-   printf("Amiga1200+ KSZ8851-16MLL Service Tool, version 1.0 (%s, %s)\n", __DATE__, __TIME__);
+   printf("Amiga1200+ KSZ8851-16MLL Service Tool\nVersion 1.1 (build %d, %s, %s)\n", build_number, __DATE__, __TIME__);
    printf("Memory base address of ethernet chip: 0x%lx\n", ETHERNET_BASE_ADDRESS);
    printf("Data Register at: 0x%lx (16 bit)\n", ETHERNET_BASE_ADDRESS + KS8851_REG_DATA_OFFSET);
    printf("CMD Register at:  0x%lx (16 bit)\n", ETHERNET_BASE_ADDRESS + KS8851_REG_CMD_OFFSET );
@@ -130,16 +134,22 @@ int main(int argc, char * argv[])
 
          if (strcmp( argv[i], "swapdata") == 0)
          {
-            swappingChipAccess = true;
+            swappingDataRegValue = true;
+         }
+
+         if (strcmp(argv[i], "swapcmd") == 0) {
+            swappingCmdRegValue = true;
          }
       }
    }
    else
    {
-      printf("usage: %s le eb swapdata\n"
-            " le: set chip to little endian mode\n"
-            " eb: set chip to big endian mode\n"
-            " swapdata: swapping every 16 bit data during chip access\n"
+      printf("\nUsage: %s le eb swapdata swapcmd\n"
+            " le: switch chip to little endian mode\n"
+            " eb: switch chip to big endian mode\n"
+            " swapdata: swap every 16 bit of data register value\n"
+            " swapcmd:  swap every 16 bit of cmd register value\n"
+
 
             , argv[0]);
       exit(0);
@@ -156,7 +166,7 @@ int main(int argc, char * argv[])
       //Init network structure
       struct ks_net * ks = ks8851_init();
 
-      if (swappingChipAccess) {
+      if (swappingDataRegValue) {
          printf("%s-tool is swapping every 16 bit data during chip access.\n", argv[0]);
       }
 
@@ -179,14 +189,15 @@ int main(int argc, char * argv[])
       //
       // Chip probe
       //
-      printf("Chip probe: ");
+      printf("Probing chip:\n");
       u16 val = ks_rdreg16(ks, KS_CIDER);
       if ((val & ~CIDER_REV_MASK) != CIDER_ID) {
-         printf("failed");
+         printf(" => failed");
+         printf(" (value on register 0xc0 is 0x%04x but should be 0x887x)\n", (val & ~CIDER_REV_MASK));
       } else {
          printf("ok!");
       }
-      printf(" (value on register 0xc0 is 0x%04x, should be 0x887x)\n", (val & ~CIDER_REV_MASK));
+
 
 
       //

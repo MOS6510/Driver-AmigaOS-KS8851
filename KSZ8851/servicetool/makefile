@@ -48,14 +48,21 @@ CC_OPTS                      += -O2 -fstrength-reduce \
 CPPFLAGS								+= -O3 -D__cplusplus $(AOS_INCLUDES) $(OS_INCLUDES) -I. \
 										 -m68$(ARCH) 
                                                             
-LINKER_OPTS                 = -Llibs -nostdlib -noixemul -lnix -lamiga -lstubs 
+LINKER_OPTS                	= -Llibs -nostdlib -noixemul -lnix -lamiga -lstubs 
 
-OBJECTS_TESTTOOL       = $(patsubst %.c, $(BUILDDIR)/%.o, $(SOURCE_TESTTOOL))
+OBJECTS_TESTTOOL       			= $(patsubst %.c, $(BUILDDIR)/%.o, $(SOURCE_TESTTOOL))
 
+ADFIMAGE								= Amiga1200+.adf
 
 .PHONY: all distribution
 
-all: builddir $(BUILDDIR)/ks8851
+all: builddir $(BUILDDIR)/ks8851 $(BUILDDIR)/$(ADFIMAGE)
+
+$(BUILDDIR)/$(ADFIMAGE):
+	@echo "Create ADF image..."
+	@$(XDFTOOL) $@ format "Amiga1200+" + makedir "network" + write $(BUILDDIR)/ks8851 "network"
+	@$(XDFTOOL) $@ list
+	
      
 builddir:
 	@echo "Create build directories..."
@@ -64,6 +71,7 @@ builddir:
 $(BUILDDIR)/ks8851:	$(OBJECTS_TESTTOOL)
 		@echo "Linking       " $@
 		@$(LINKER) $^ $(STRIP_OPTS) -o $@ -noixemul -Llibs -O2 -Wl,-Map,$@.map 
+		
 
 clean:
 		rm -r -f -d $(BUILDDIR)/* *.o *.s *.aobj *.map mapfile
@@ -72,10 +80,6 @@ clean:
 $(BUILDDIR)/%.o:%.c
 	@echo "Compiling C   " $< " (cpu=68"$(ARCH)")"
 	@$(CC) -c -nostdinc $(CC_OPTS) -o $@ $< 
-
-$(BUILDDIR)/%.o:%.cpp
-	@echo "Compiling C++ " $< " (cpu=68"$(ARCH)")"
-	@$(CPP) -c $(CPPFLAGS) -D__cplusplus -fno-rtti $(COMPILE_MODE) -o $@ $< 
 
 .c.s:
 	$(CC) -S -nostdinc $(CC_OPTS) $(COMPILE_MODE) -o $@ $< 
