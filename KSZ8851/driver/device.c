@@ -51,8 +51,12 @@
 #include "devdebug.h"
 #include "jan_int.h"
 #include "tools.h"
-
 #include "version.h"  
+#include "device.h"
+#include "helper.h"
+
+BPTR DevExpunge(struct Library * DevBase);
+
 
 // ############## LOCAL FUNCTION ##################
 
@@ -130,7 +134,8 @@ extern int sigBitCntr;
 
 
 //TODO: Check if "__saveds" is correct here: Loads A4 near register
-__saveds ULONG FakePFHookEntry()
+SAVEDS
+ULONG FakePFHookEntry()
 {
    return 1;
 }
@@ -193,7 +198,6 @@ void DevOpen(struct IOSana2Req *ios2,
 {  
    struct EtherbridgeUnit *etherUnit;
    struct BufferManagement *bm;
-   ULONG returncode=0;
    BOOL success = FALSE; 
    
    DEBUGOUT((VERBOSE_DEVICE, "DevOpen(ioreq=0x%lx,unit=%d,flags=0x%lx)...\n", ios2, s2unit,s2flags));
@@ -360,7 +364,6 @@ void DevOpen(struct IOSana2Req *ios2,
 
                //Success!
                success = TRUE;
-               returncode = 0;
                EtherDevice->ed_Device.lib_OpenCnt++;
                EtherDevice->ed_Device.lib_Flags &=~LIBF_DELEXP;
                etherUnit->eu_Unit.unit_OpenCnt++;
@@ -390,7 +393,6 @@ void DevOpen(struct IOSana2Req *ios2,
       ios2->ios2_Req.io_Error = IOERR_OPENFAIL;
       ios2->ios2_Req.io_Unit = (struct Unit *) -1;
       ios2->ios2_Req.io_Device = (struct Device *) -1;
-      returncode = IOERR_OPENFAIL;
    }
 
    EtherDevice->ed_Device.lib_OpenCnt--;  
@@ -928,7 +930,7 @@ VOID ExpungeUnit(UBYTE unitNumber, struct EtherbridgeDevice *EtherDevice) {
 /**
  * This is the entry point for the Device Unit process.
  */
-__saveds
+SAVEDS
 void DevProcEntry()
 {     
     struct Process *proc;

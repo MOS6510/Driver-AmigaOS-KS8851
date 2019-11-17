@@ -179,10 +179,10 @@ struct MCAF_Adresse
 //############# prototypes ###################
 
 //Device Interface (public)
-struct Library * DevInit(BPTR DeviceSegList, struct Library * DevBasePointer, struct Library * execBase);
-VOID  DevOpen (struct IOSana2Req *ios2, ULONG s2unit, ULONG s2flags, struct Library * devPointer);
-BPTR  DevClose(struct IOSana2Req *ios2, struct Library * Devbase);
-BPTR  DevExpunge(struct Library * DevBase);
+//struct Library * DevInit(BPTR DeviceSegList, struct Library * DevBasePointer, struct Library * execBase);
+//VOID  DevOpen (struct IOSana2Req *ios2, ULONG s2unit, ULONG s2flags, struct Library * devPointer);
+//BPTR  DevClose(struct IOSana2Req *ios2, struct Library * Devbase);
+//BPTR  DevExpunge(struct Library * DevBase);
 VOID  DevBeginIO(struct IOSana2Req *,struct Library * DevBase);
 ULONG DevAbortIO( struct IOSana2Req *,struct Library * DevBase);
 

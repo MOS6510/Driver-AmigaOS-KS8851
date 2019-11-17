@@ -7,8 +7,6 @@
 #ifndef CONFFILE_H
 #define CONFFILE_H
 
-#include <exec/types.h>
-
 void RegistryInit( const char * File);
 void RegistryDestroy();
 char * ReadKeyStr( const char * Key, char * def );

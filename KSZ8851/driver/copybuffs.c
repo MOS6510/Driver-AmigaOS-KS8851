@@ -15,10 +15,11 @@
 #include <devices/sana2.h>
 
 #include <time.h>
+#include "helper.h"
 
 
 /// Used for both: CopyToBuf and CopyFromBuf calls
-__saveds
+SAVEDS
 ULONG CopyBuf(APTR funcPtr, ULONG to, ULONG from, ULONG len) {
    register ULONG _res __asm("d0");
    register APTR a2  __asm("a2") = funcPtr;
@@ -39,7 +40,7 @@ ULONG CopyBuf(APTR funcPtr, ULONG to, ULONG from, ULONG len) {
    return _res;
 }
 
-__saveds
+SAVEDS
 ULONG CallFilterHook(struct Hook * hook, struct IOSana2Req * ioreq, APTR rawPktData) {
    register ULONG _res __asm("d0");
    register APTR  a3 __asm("a3") = hook->h_Entry; //Assembler entry point function of the hook.

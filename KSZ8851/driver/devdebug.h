@@ -3,9 +3,9 @@
 
 
 //Bit masks for debugging
-#define VERBOSE_DEVICE   1
-#define VERBOSE_HW       2
-#define VERBOSE_CONFFILE 4
+#define VERBOSE_DEVICE   1<<1
+#define VERBOSE_HW       1<<2
+#define VERBOSE_CONFFILE 1<<3
 
 
 #if DEBUG > 0

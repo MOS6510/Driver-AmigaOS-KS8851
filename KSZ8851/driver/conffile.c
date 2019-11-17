@@ -51,7 +51,7 @@ void RegistryInit(const char * File) {
 void RegistryDestroy() {
    if (fh) {
       Close(fh);
-      fh = NULL;
+      fh = (ULONG)NULL;
    };
    if (rdargs) {
       FreeDosObject( DOS_RDARGS, rdargs);

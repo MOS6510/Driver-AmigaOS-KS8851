@@ -11,30 +11,29 @@
 // define as unresolved external references (proto/xxx.h) and compiler will link to auto(matically) open library
 #include <proto/exec.h>
 #include <proto/utility.h>
-
 #include <exec/types.h>
 
-#include "../driver/devdebug.h"
-#include "../driver/tools.h"
+#include "devdebug.h"
+#include "tools.h"
 #include "libinit.h"
-
+#include "helper.h"
 #include "device.h"
 #include "version.h"
 
 
 // ------------------- Prototypes ------------------------
 
-__saveds struct Library * _DevInit(REG(a0,BPTR SegListPointer),
-                                   REG(d0,struct Library * dev),
-                                   REG(a6,struct Library * exec_base));
-extern const APTR InitTab [4];
+SAVEDS struct Library * _DevInit(REG(a0,BPTR SegListPointer),
+                                 REG(d0,struct Library * dev),
+                                 REG(a6,struct Library * exec_base));
+extern const APTR InitTab[4];
 
 //init and deinit auto-open-library of "libnix" which has to be handles by hand here.
 extern void __initlibraries(void);
 extern void __exitlibraries(void);
 extern long __oslibversion;
 
-extern struct Library * SysBase;
+extern struct ExecBase * SysBase;
 
 // ------------------- IMPLEMENTATION ------------------------
 
@@ -62,7 +61,7 @@ static const struct Resident RomTag __attribute__((used)) =
   (APTR)&InitTab
 };
 
-static const APTR InitTab[4] =
+const APTR InitTab[4] =
 {
   (APTR)sizeof(struct EtherbridgeDevice),
   (APTR)&__FuncTable__[1],
@@ -79,13 +78,13 @@ static const APTR InitTab[4] =
  * @param REG(a6,struct Library * exec_base)
  * @return
  */
-__saveds 
+SAVEDS
 struct Library * _DevInit(REG(a0,BPTR SegListPointer),
                           REG(d0,struct Library * dev),
                           REG(a6,struct Library * exec_base))             
 {   
    //Take the exec base... 
-   SysBase = (struct Library *)exec_base;
+   SysBase = (struct ExecBase *)exec_base;
 
    //Activate "Automatic Open Library support of libnix".
    //Because we don't use an device startup here we must all the auto-open-function by hand.
@@ -94,7 +93,7 @@ struct Library * _DevInit(REG(a0,BPTR SegListPointer),
    __oslibversion = 37l; //open all libs with at least Version 37
    __initlibraries();
 
-   return DevInit(SegListPointer, dev, exec_base );
+   return DevInit(SegListPointer,  (struct libBase *)dev, exec_base );
 }
 
 /**
@@ -105,13 +104,13 @@ struct Library * _DevInit(REG(a0,BPTR SegListPointer),
  * @param REG(d1, ULONG flags)
  * @param REG(a6, struct Library * dev)
  */
-__saveds 
+SAVEDS
 VOID _DevOpen(REG(d0, ULONG unit),
               REG(a1, APTR iorq),
               REG(d1, ULONG flags),
               REG(a6, struct Library * dev))
 {
-  DevOpen(iorq, unit, flags, dev);
+  DevOpen((long unsigned int)iorq, (void*)unit, flags, (struct libBase *)dev);
 }
 
 /**
@@ -121,10 +120,10 @@ VOID _DevOpen(REG(d0, ULONG unit),
  * @param REG(a6,struct Library * DevBase)
  * @return
  */
-__saveds
+SAVEDS
 BPTR _DevClose(REG(a1,APTR iorq),REG(a6,struct Library * DevBase))
 {
-   return DevClose(iorq, DevBase);
+   return DevClose(iorq, (struct libBase *)DevBase);
 }
 
 /**
@@ -133,10 +132,10 @@ BPTR _DevClose(REG(a1,APTR iorq),REG(a6,struct Library * DevBase))
  * @param REG(a6,struct Library * DevBase)
  * @return
  */
-__saveds 
+SAVEDS
 BPTR _DevExpunge(REG(a6,struct Library * DevBase))
 {
-   BPTR res = DevExpunge(DevBase);
+   BPTR res = DevExpunge((struct libBase *)DevBase);
    DEBUGOUT((VERBOSE_DEVICE,"_DevExpunge. calling __exitlibraries() \n"));
 
    //Freeing all auto-open libraries again after expunge lib.
@@ -190,7 +189,7 @@ asm ( ".globl __DevAbortIO \n"
  * WARNING: This fuction MUST exists!
  * @return null
  */
-__saveds
+SAVEDS
 LONG _DevNullFunction( void )
 {
    return 0;
