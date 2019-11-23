@@ -45,7 +45,7 @@ $(BUILDDIR)/$(DEVICE_NAME):	$(OBJS)
 		@echo "Linking       " $@
 		@$(LD) $^ -o $@.$(ARCH) $(LDOPTS)
 		@strings $@.$(ARCH) | grep '$$VER'
-		ls -la $@.$(ARCH)
+		@ls -la $@.$(ARCH)
 		
 clean:
 		@rm -r -f -d *.o *.s *.aobj *.device *.map mapfile $(BUILDDIR)/*.o $(BUILDDIR)/*.device
@@ -56,5 +56,6 @@ $(BUILDDIR)/%.o:%.c $(HDR)
 	@$(CC) -c $(CFLAGS) -o $@ $< 
 
 .c.s:
-	@$(CC) -S -nostdinc $(CFLAGS) -o $@ $< 
+	@echo "Compiling C (only to ASM) " $< " (68"$(ARCH)")"
+	@$(CC) -S $(CFLAGS) -o $@ $< 
 	

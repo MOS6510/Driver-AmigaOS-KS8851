@@ -22,11 +22,9 @@
 #include "device.h"
 #include "version.h"
 
-// ------------------- Prototypes ------------------------
+// ------------------- Globals ---------------------------
 
-SAVEDS struct Library * _DevInit(REG(a0,BPTR SegListPointer),
-                                 REG(d0,struct Library * dev),
-                                 REG(a6,struct Library * exec_base));
+extern struct ExecBase * SysBase;
 extern const APTR InitTab[4];
 
 //init and deinit auto-open-library of "libnix" which has to be handles by hand here.
@@ -34,7 +32,12 @@ extern void __initlibraries(void);
 extern void __exitlibraries(void);
 extern long __oslibversion;
 
-extern struct ExecBase * SysBase;
+// ------------------- Prototypes ------------------------
+
+SAVEDS struct Library * _DevInit(REG(a0,BPTR SegListPointer),
+                                 REG(d0,struct Library * dev),
+                                 REG(a6,struct Library * exec_base));
+
 
 // ------------------- IMPLEMENTATION ------------------------
 
@@ -64,11 +67,32 @@ static const struct Resident RomTag __attribute__((used)) =
 
 const APTR InitTab[4] =
 {
-  (APTR)sizeof(struct EtherbridgeDevice),
+  (APTR)sizeof(struct DeviceDriver),
   (APTR)&__FuncTable__[1],
   (APTR)NULL,           //init dev base by hand (in function "DevInit()" )
   (APTR)&_DevInit
 };
+
+/**
+ * AmigaOS entry point "DevInit".
+ *
+ * @param REG(a0,BPTR SegListPointer)
+ * @param REG(d0,struct Library * dev)
+ * @param REG(a6,struct Library * exec_base)
+ * @return D0 Library...
+ */
+asm ( ".globl __DevInit \n"
+      "__DevInit: \n"
+      "  movem.l d1-d7/a0-a6,-(sp) \n"
+
+      "  move.l  a6,-(sp) \n"
+      "  move.l  d0,-(sp) \n"
+      "  move.l  a0,-(sp) \n"
+      "  jsr     _DevInit \n"
+      "  lea     12(sp),sp \n"
+
+      "  movem.l (sp)+,d1-d7/a0-a6 \n"
+      "  rts");
 
 /**
  * AmigaOS entry point "Init Device".
@@ -78,6 +102,7 @@ const APTR InitTab[4] =
  * @param REG(a6,struct Library * exec_base)
  * @return
  */
+/*
 SAVEDS
 struct Library * _DevInit(REG(a0,BPTR SegListPointer),
                           REG(d0,struct Library * dev),
@@ -94,7 +119,7 @@ struct Library * _DevInit(REG(a0,BPTR SegListPointer),
    __initlibraries();
 
    return DevInit(SegListPointer,  (struct libBase *)dev, exec_base );
-}
+}*/
 
 /**
  * AmigaOS entry point "Open Device".
@@ -110,7 +135,8 @@ VOID _DevOpen(REG(d0, ULONG unit),
               REG(d1, ULONG flags),
               REG(a6, struct Library * dev))
 {
-  DevOpen((long unsigned int)iorq, (void*)unit, flags, (struct libBase *)dev);
+    DEBUGOUT((1,"_DevOpen: 0x%lx,  0x%lx,  0x%lx,  0x%lx\n", unit, iorq, flags, dev));
+    DevOpen((ULONG)iorq, (void*)unit, flags, (struct libBase *)dev);
 }
 
 /**

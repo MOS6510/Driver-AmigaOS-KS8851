@@ -62,33 +62,33 @@
 #include "copybuffs.h"
 
 
-BPTR DevExpunge(struct Library * DevBase);
 
 // ############################## LOCALS  #####################################
 
-static ULONG AbortReqAndRemove(struct MinList *, struct IOSana2Req *,struct EtherbridgeDevice *,struct SignalSemaphore * lock);
-static void  AbortReqList(struct MinList *minlist,struct EtherbridgeDevice * EtherDevice);
-static BOOL  ReadConfig(struct EtherbridgeDevice *);
+static const char * DEVICE_TASK_NAME = DEVICE_NAME " Unit Task";
 
-const char * DEVICE_TASK_NAME = DEVICE_NAME " Unit Task";
+// ############################## Prototypes ##################################
+
+static ULONG AbortRequestAndRemove(struct MinList *, struct IOSana2Req *,struct DeviceDriver *,struct SignalSemaphore * lock);
+static void  AbortReqList(struct MinList *minlist,struct DeviceDriver * EtherDevice);
+static BOOL  ReadConfig(struct DeviceDriver *);
+static void DevProcEntry();
+static BOOL checkStackSpace(int minStackSize);
 
 //############################### CONST #######################################
 
 // State bits for edu_State
 #define ETHERUB_CONFIG     0
 #define ETHERUB_ONLINE     1
-#define ETHERUB_NOJANUS    3
-#define ETHERUB_EXCLUSIVE  4
-#define ETHERUB_LOOPBACK   5
-#define ETHERUB_PROMISC    6
-#define ETHERUB_NOBRIDGEBOARD 7
+#define ETHERUB_EXCLUSIVE  2
+#define ETHERUB_LOOPBACK   3
+#define ETHERUB_PROMISC    4
+
 #define ETHERUF_CONFIG        (1<<ETHERUB_CONFIG)
 #define ETHERUF_ONLINE        (1<<ETHERUB_ONLINE)
-#define ETHERUF_NOJANUS       (1<<ETHERUB_NOJANUS)
 #define ETHERUF_EXCLUSIVE     (1<<ETHERUB_EXCLUSIVE)
 #define ETHERUF_LOOPBACK      (1<<ETHERUB_LOOPBACK)
 #define ETHERUF_PROMISC       (1<<ETHERUB_PROMISC)
-#define ETHERUF_NOBRIDGEBOARD (1<<ETHERUB_NOBRIDGEBOARD)
 
 
 //This is for defining the API version to the PC side.
@@ -99,28 +99,18 @@ const char DevName[]     = DEVICE_NAME;
 const char DevIdString[] = VERSION_STRING;
 const char sConfigFile[] = DEFAULT_DEVICE_CONFIG_FILE;
 
-
 //############ Globale Variablen ###############################################
 
-struct bridge_ether * b_param = NULL;
-struct bridge_ether * w_param = NULL;
-struct Sana2DeviceStats GlobStat;
-unsigned long _WBenchMsg=0;
-
-struct EtherbridgeDevice * EtherDevice;    //Local pointer to own device device structure
-char   sPCCmd[160];                  //Name der PC-Exe (PC-Server-Name)
-char   sPCPktDrvCmd[160] = "";       //MSDOS-Kommando zum starten des Packet Treibers
-char   sPCPktDrvPar[160] = "";       //FormatString fuer Parameter zum Packet Treiber
-int    iComMode=0;                   //Kommunikationsmodus zwischen PC und Amiga
-                                     // 0 : fuer Janus Signale
-                                     // 1 : fuer VBeam-Handler
-
 struct ExecBase * SysBase  = NULL;
+struct DeviceDriver * globEtherDevice = NULL;
+struct Sana2DeviceStats GlobStat;
+
+//init and deinit auto-open-library of "libnix" which has to be handles by hand here.
+extern void __initlibraries(void);
+extern void __exitlibraries(void);
+extern long __oslibversion;
 
 //############ Externe Variablen und Funktionen ################################
-
-extern int sigBitCntr;
-
 
 SAVEDS
 ULONG FakePFHookEntry()
@@ -128,9 +118,8 @@ ULONG FakePFHookEntry()
    return 1;
 }
 
-
 /**
- * Device Init function.
+ * AmigaOS Device Init function. Called when the OS initializes/loads the device driver into memory.
  *
  * @param DeviceSegList
  * @param DevBasePointer
@@ -139,40 +128,50 @@ ULONG FakePFHookEntry()
  */
 struct Library * DevInit(BPTR DeviceSegList, struct Library * DevBasePointer, struct Library * execBase) {
 
+   //Take the exec base...
+   SysBase = (struct ExecBase *)execBase;
+
+   //Activate "Automatic Open Library support of libnix".
+   //Because we don't use an device startup here we must all the auto-open-function by hand.
+   //If not all libraries are not open automatically especially the "utility.library" when using "libnix"
+   //will crash dividing integer in function "ito2()".
+   __oslibversion = 37l; //open all libs with at least Version 37
+   __initlibraries();
+
    CHECK_LIBRARY_IS_OPEN(DOSBase);
    CHECK_LIBRARY_IS_OPEN(IntuitionBase);
 
-   DEBUGOUT((1, "DevInit(DeviceSegList=0x%lx)\n", DeviceSegList));
+   DEBUGOUT((1, "DevInit: DeviceSegList=0x%lx, BasePointer=0x%lx, execBase=0x%lx\n", DeviceSegList, DevBasePointer, execBase));
 
-   EtherDevice = (struct EtherbridgeDevice *)DevBasePointer;
+   globEtherDevice = (struct DeviceDriver *)DevBasePointer;
    
    //init device structure  
-   EtherDevice->ed_Device.lib_Node.ln_Type = NT_DEVICE;
-   EtherDevice->ed_Device.lib_Node.ln_Name = (UBYTE *)DevName;
-   EtherDevice->ed_Device.lib_Flags        = LIBF_CHANGED | LIBF_SUMUSED;
-   EtherDevice->ed_Device.lib_Version      = (UWORD)DevVersion;
-   EtherDevice->ed_Device.lib_Revision     = (UWORD)DevRevision;
-   EtherDevice->ed_Device.lib_IdString     = (char *)DevIdString;
+   globEtherDevice->ed_Device.lib_Node.ln_Type = NT_DEVICE;
+   globEtherDevice->ed_Device.lib_Node.ln_Name = (UBYTE *)DevName;
+   globEtherDevice->ed_Device.lib_Flags        = LIBF_CHANGED | LIBF_SUMUSED;
+   globEtherDevice->ed_Device.lib_Version      = (UWORD)DevVersion;
+   globEtherDevice->ed_Device.lib_Revision     = (UWORD)DevRevision;
+   globEtherDevice->ed_Device.lib_IdString     = (char *)DevIdString;
    
-   EtherDevice->ed_SegList = DeviceSegList;
+   globEtherDevice->ed_SegList = DeviceSegList;
 
-   //Show user messages until config overrides it
-   EtherDevice->ed_showMessages = true;
+   //Show user messages until config settings overrides it
+   globEtherDevice->ed_showMessages = true;
 
    //Create a dummy hook which do nothing...
-   bzero(&EtherDevice->ed_DummyPFHook, sizeof(EtherDevice->ed_DummyPFHook));
-   EtherDevice->ed_DummyPFHook.h_Entry = &FakePFHookEntry;  // Pointer to a simple "RTS" function...
+   bzero(&globEtherDevice->ed_DummyPFHook, sizeof(globEtherDevice->ed_DummyPFHook));
+   globEtherDevice->ed_DummyPFHook.h_Entry = &FakePFHookEntry;  // Pointer to a simple "RTS" function...
    
    // Device Semaphores
-   InitSemaphore((APTR)&EtherDevice->ed_DeviceLock);
-   InitSemaphore((APTR)&EtherDevice->ed_MCAF_Lock);
+   InitSemaphore((APTR)&globEtherDevice->ed_DeviceLock);
+   InitSemaphore((APTR)&globEtherDevice->ed_MCAF_Lock);
    
-   return (struct Library *)EtherDevice;
+   return (struct Library *)globEtherDevice;
 }
 
 
 /**
- * Device open function.
+ * Device open function. Called from OS when the device is opened.
  *
  * @param ios2
  * @param s2unit
@@ -184,43 +183,44 @@ void DevOpen(struct IOSana2Req *ios2,
               ULONG s2flags,
               struct Library * devPointer)
 {  
-   struct EtherbridgeUnit *etherUnit;
+   struct DeviceDriverUnit *etherUnit;
    struct BufferManagement *bm;
    BOOL success = FALSE; 
    
-   DEBUGOUT((VERBOSE_DEVICE, "DevOpen(ioreq=0x%lx,unit=%d,flags=0x%lx)...\n", ios2, s2unit,s2flags));
+   DEBUGOUT((VERBOSE_DEVICE, "Parameter Test: '1' == %ld (16 bit)\n", (uint16_t) 1));
+   DEBUGOUT((VERBOSE_DEVICE, "Parameter Test: '2' == %ld (32 bit)\n", (uint32_t) 2));
 
-   //Only when device is opened check stack is at leased 5000 bytes big.
-   //If not Etherbridge would crash for some reason somewhere because of that.
-   //Brings up waring. Exit with failure.
-  /*if (!checkStackSpace(5000)) {
-      __request("Stack size is too small! Please increase the size to at least 5kb...");
+   DEBUGOUT((VERBOSE_DEVICE, "DevOpen(ioreq=0x%lx, unit=%ld, flags=0x%lx)...\n", ios2, s2unit, s2flags));
+
+
+   //Only when device is opened check that the stack is at leased 5000 bytes in size.
+   //If not device would crash for some reason somewhere because of that.
+   //Bring up waring. Exit with failure.
+   if (!checkStackSpace(STACK_SIZE_MINIMUM))
+   {
+      //__request("Stack size is too small! Please increase the size to at least 5kb...");
       ios2->ios2_Req.io_Error = IOERR_OPENFAIL;
       ios2->ios2_Req.io_Unit = (struct Unit *) -1;
       ios2->ios2_Req.io_Device = (struct Device *) -1;
       return;
-   }*/
+   }
 
    CHECK_LIBRARY_IS_OPEN(UtilityBase);
 
-   ObtainSemaphore((APTR)&EtherDevice->ed_DeviceLock);
+   ObtainSemaphore((APTR)&globEtherDevice->ed_DeviceLock);
 
-   EtherDevice->ed_Device.lib_OpenCnt++;
+   globEtherDevice->ed_Device.lib_OpenCnt++;
 
-   //Detect used Bridgeboards...
-   //EtherDevice->ed_BBType = detectBridgeboards();
-
-   // Bridgeboard, Janus-Software da ? Bisheriger Zugriff nich exklusiv ?
-   if(!(EtherDevice->ed_Device.lib_Flags & ETHERUF_NOBRIDGEBOARD) &&
-      !(EtherDevice->ed_Device.lib_Flags & ETHERUF_NOJANUS) &&
-      !(EtherDevice->ed_Device.lib_Flags & ETHERUF_EXCLUSIVE ) )
+   //Test and check hardware
+   if (hal_probe())
    {
+
       //jetzt exklusiven Zugriff ?
       if (s2flags & SANA2OPF_MINE)
       {
          //schon von jemanden anderen geoeffnet ?
-         if (!(EtherDevice->ed_Device.lib_OpenCnt > 1))
-            EtherDevice->ed_Device.lib_Flags |= ETHERUF_EXCLUSIVE;
+         if (!(globEtherDevice->ed_Device.lib_OpenCnt > 1))
+            globEtherDevice->ed_Device.lib_Flags |= ETHERUF_EXCLUSIVE;
          else
             goto end;
       }
@@ -229,20 +229,25 @@ void DevOpen(struct IOSana2Req *ios2,
       if (s2flags & SANA2OPF_PROM)
       {
          if (s2flags & SANA2OPF_MINE)
-            EtherDevice->ed_Device.lib_Flags |= ETHERUF_PROMISC;
+            globEtherDevice->ed_Device.lib_Flags |= ETHERUF_PROMISC;
          else
             goto end;
       }
 
-      /* Only UNIT 0 is allowed to open */
+      /* Only "UNIT 0" is supported to open */
       if(s2unit < ED_MAXUNITS)
       {
+         Alert(10);
+
          //Bring up unit device process...
-         etherUnit = InitETHERUnit(s2unit,EtherDevice);
+         etherUnit = InitUnitProcess(s2unit,globEtherDevice);
+
          if( etherUnit )
          {
+            Alert(6);
+
             //PromMode setzen/löschen wenn Device schon online
-            if (etherUnit->eu_State              & ETHERUF_ONLINE)
+            if (etherUnit->eu_State & ETHERUF_ONLINE)
             {
                //TODO:
             }
@@ -261,61 +266,62 @@ void DevOpen(struct IOSana2Req *ios2,
                NewList((struct List *) &bm->bm_RxQueue);
 
                //Add BM to the list of all BM's...
-               //CHECK_ALREADY_QUEUED((struct List *)&etherUnit->eu_BuffMgmt, (struct Node *)bm);
                AddTail((struct List *)&etherUnit->eu_BuffMgmt,(struct Node *)bm);
 
-
-               if(ios2->ios2_BufferManagement)
+               const struct TagItem * tagItem = ios2->ios2_BufferManagement;
+               if(tagItem)
                {
                   print(5,"\n");
-                  bufftag = FindTagItem(S2_CopyToBuff, (struct TagItem *)ios2->ios2_BufferManagement);
+                  bufftag = FindTagItem(S2_CopyToBuff, tagItem);
                   if(bufftag && !bm->bm_CopyToBuffer)
                   {
                      bm->bm_CopyToBuffer = (SANA2_CTB) bufftag->ti_Data;
                      print(5,"  SANA2_CTB-Tag found...\n");
                   }
 
-                  bufftag = FindTagItem(S2_CopyToBuff16, (struct TagItem *) ios2->ios2_BufferManagement);
+                  bufftag = FindTagItem(S2_CopyToBuff16, tagItem);
                   if (bufftag) {
                      bm->bm_CopyToBuffer = (SANA2_CTB) bufftag->ti_Data;
                      print(5, "  SANA2_CTB16-Tag found...\n");
                   }
 
-                  bufftag = FindTagItem(S2_CopyFromBuff, (struct TagItem *)ios2->ios2_BufferManagement);
+                  bufftag = FindTagItem(S2_CopyFromBuff, tagItem);
                   if(bufftag && !bm->bm_CopyFromBuffer)
                   {
                      bm->bm_CopyFromBuffer = (SANA2_CFB) bufftag->ti_Data;
                      print(5,"  SANA2_CFB-Tag found...\n");
                   }
 
-                  bufftag = FindTagItem(S2_CopyFromBuff16, (struct TagItem *) ios2->ios2_BufferManagement);
+                  bufftag = FindTagItem(S2_CopyFromBuff16, tagItem);
                   if (bufftag) {
                      bm->bm_CopyFromBuffer = (SANA2_CFB) bufftag->ti_Data;
                      print(5, "  SANA2_CFB16-Tag  found...\n");
                   }
 
-                  bufftag = FindTagItem(S2_PacketFilter, (struct TagItem *)ios2->ios2_BufferManagement);
+                  bufftag = FindTagItem(S2_PacketFilter, tagItem);
                   if(bufftag)
                   {
                      bm->bm_PacketFilterHook = (struct Hook *) bufftag->ti_Data;
                      print(5,"  SANA2_PacketFilter-Tag found...\n");
                   }
 
-                  bufftag = FindTagItem(S2_DMACopyFromBuff32, (struct TagItem *) ios2->ios2_BufferManagement);
+                  bufftag = FindTagItem(S2_DMACopyFromBuff32, tagItem);
                   if (bufftag) {
                      //TODO:
                      print(5, "  S2_DMACopyFromBuff32-Tag found...\n");
                   }
 
-                  bufftag = FindTagItem(S2_DMACopyToBuff32, (struct TagItem *) ios2->ios2_BufferManagement);
+                  bufftag = FindTagItem(S2_DMACopyToBuff32, tagItem);
                   if (bufftag) {
                      //TODO:
                      print(5, "  S2_DMACopyToBuff32-Tag found...\n");
                   }
 
                   //TODO: Add SANA2R3 Hook extensions functions...
+
                   //print out all tags:
-                  DEBUGOUT((5, "All tags: "));
+                  #if DEBUG > 0
+                  DEBUGOUT((5, "All buffer management tags: "));
                   struct TagItem *tstate;
                   struct TagItem *tag;
                   tstate = (struct TagItem *) ios2->ios2_BufferManagement;
@@ -324,36 +330,24 @@ void DevOpen(struct IOSana2Req *ios2,
                      DEBUGOUT((5, " 0x%lx", (ULONG)tag->ti_Tag));
                   }
                   DEBUGOUT((5, "\n"));
-
-                  /*
-                  struct TagItem * item = ((struct TagItem *) ios2->ios2_BufferManagement);
-                  struct TagItem ** item2 = &item;
-                  do
-                  {
-                     item = (struct TagItem *) ios2->ios2_BufferManagement;
-                     DEBUGOUT((5, " tagnum = 0x%lx", (ULONG)item->ti_Tag));
-                     item = NextTagItem(item2);
-                  } while(item != NULL);*/
-
+                  #endif
                }
 
                /*
                 * Using dummy buffer management function when no callback are given.
                 */
                if (!bm->bm_PacketFilterHook)
-                  bm->bm_PacketFilterHook = &EtherDevice->ed_DummyPFHook;
+                  bm->bm_PacketFilterHook = &globEtherDevice->ed_DummyPFHook;
                if (!bm->bm_CopyToBuffer)
-                  bm->bm_CopyToBuffer     = (APTR)&EtherDevice->ed_DummyPFHook.h_Entry;
+                  bm->bm_CopyToBuffer     = (APTR)&globEtherDevice->ed_DummyPFHook.h_Entry;
                if (!bm->bm_CopyFromBuffer)
-                  bm->bm_CopyFromBuffer   = (APTR)&EtherDevice->ed_DummyPFHook.h_Entry;
+                  bm->bm_CopyFromBuffer   = (APTR)&globEtherDevice->ed_DummyPFHook.h_Entry;
 
-
-
-
-               //Success!
                success = TRUE;
-               EtherDevice->ed_Device.lib_OpenCnt++;
-               EtherDevice->ed_Device.lib_Flags &=~LIBF_DELEXP;
+               Alert(4);
+
+               globEtherDevice->ed_Device.lib_OpenCnt++;
+               globEtherDevice->ed_Device.lib_Flags &=~LIBF_DELEXP;
                etherUnit->eu_Unit.unit_OpenCnt++;
 
                /* Fix up the initial IO request */
@@ -361,7 +355,7 @@ void DevOpen(struct IOSana2Req *ios2,
                ios2->ios2_Req.io_Error = S2ERR_NO_ERROR;
                ios2->ios2_Req.io_Message.mn_Node.ln_Type = NT_REPLYMSG;
                ios2->ios2_Req.io_Unit = (struct Unit *)etherUnit;
-               ios2->ios2_Req.io_Device = (struct Device *)EtherDevice;
+               ios2->ios2_Req.io_Device = (struct Device *)globEtherDevice;
             }
          }
       }
@@ -369,25 +363,19 @@ void DevOpen(struct IOSana2Req *ios2,
 
    end:
 
-   /* irgendetwas fehlgeschlagen ? */
    if (!success) {
-      if (EtherDevice->ed_Device.lib_Flags & ETHERUF_NOBRIDGEBOARD) {
-         if (EtherDevice->ed_Device.lib_Flags & ETHERUF_NOJANUS) {
-            //
-         } else {
-            //
-         }
-      }
       ios2->ios2_Req.io_Error = IOERR_OPENFAIL;
       ios2->ios2_Req.io_Unit = (struct Unit *) -1;
       ios2->ios2_Req.io_Device = (struct Device *) -1;
    }
 
-   EtherDevice->ed_Device.lib_OpenCnt--;  
-   ReleaseSemaphore((APTR)&EtherDevice->ed_DeviceLock);
+   globEtherDevice->ed_Device.lib_OpenCnt--;  
+   ReleaseSemaphore((APTR)&globEtherDevice->ed_DeviceLock);
 
    DEBUGOUT((VERBOSE_DEVICE, "DevOpen()...ends.\n"));
 }
+
+
 
 /**
  * Device close function.
@@ -396,34 +384,37 @@ void DevOpen(struct IOSana2Req *ios2,
  * @param DevBase
  * @return
  */
-BPTR DevClose(struct IOSana2Req *ios2, struct Library * DevBase) {
-   struct EtherbridgeUnit *etherUnit;
+BPTR DevClose(struct IOSana2Req *ios2, struct Library * DevBase)
+{
+   struct DeviceDriverUnit *etherUnit;
    BPTR seglist = 0L;
 
    DEBUGOUT((VERBOSE_DEVICE, "*DevClose(ioreq=0x%lx)\n", ios2));
 
    //Check IORequest for validity to not close device twice!
    if (ios2->ios2_Req.io_Device != (struct Device *) -1 //
-      && ios2->ios2_Req.io_Unit != (struct Unit *) -1) {
+      && ios2->ios2_Req.io_Unit != (struct Unit *) -1)
+   {
+      ObtainSemaphore((APTR) &globEtherDevice->ed_DeviceLock);
 
-      ObtainSemaphore((APTR) &EtherDevice->ed_DeviceLock);
-
-      etherUnit = (struct EtherbridgeUnit *) ios2->ios2_Req.io_Unit;
+      etherUnit = (struct DeviceDriverUnit *) ios2->ios2_Req.io_Unit;
 
       //Abort every read request of the caller...
       struct BufferManagement * bm = (struct BufferManagement *) ios2->ios2_BufferManagement;
-      if (bm) {
+      if (bm)
+      {
          ObtainSemaphore((APTR) &bm->bm_RxQueueLock);
-         AbortReqList(&bm->bm_RxQueue, EtherDevice);
+         AbortReqList(&bm->bm_RxQueue, globEtherDevice);
          ReleaseSemaphore((APTR) &bm->bm_RxQueueLock);
 
          // Find the single buffer management from the caller and free it
          ObtainSemaphore((APTR) &etherUnit->eu_BuffMgmtLock);
          for (bm = (struct BufferManagement *) etherUnit->eu_BuffMgmt.mlh_Head; //
                bm->bm_Node.mln_Succ; //
-               bm = (struct BufferManagement *) bm->bm_Node.mln_Succ) {
-            //BufferManagement gefunden ?
-            if (bm == ios2->ios2_BufferManagement) {
+               bm = (struct BufferManagement *) bm->bm_Node.mln_Succ)
+         {
+            if (bm == ios2->ios2_BufferManagement)
+            {
                Remove((struct Node *) bm);
                FreeMem(bm, sizeof(struct BufferManagement));
                ios2->ios2_BufferManagement = NULL;
@@ -436,9 +427,9 @@ BPTR DevClose(struct IOSana2Req *ios2, struct Library * DevBase) {
       }
 
       //Reset always exclusive, loopback or promiscue mode...
-      EtherDevice->ed_Device.lib_Flags &= ~ETHERUF_EXCLUSIVE;
-      EtherDevice->ed_Device.lib_Flags &= ~ETHERUF_LOOPBACK;
-      EtherDevice->ed_Device.lib_Flags &= ~ETHERUF_PROMISC;
+      globEtherDevice->ed_Device.lib_Flags &= ~ETHERUF_EXCLUSIVE;
+      globEtherDevice->ed_Device.lib_Flags &= ~ETHERUF_LOOPBACK;
+      globEtherDevice->ed_Device.lib_Flags &= ~ETHERUF_PROMISC;
 
       /* Trash the io_Device and io_Unit fields so that any attempt to use this
        request will die immediately. */
@@ -449,22 +440,25 @@ BPTR DevClose(struct IOSana2Req *ios2, struct Library * DevBase) {
        That way, if I need to expunge, I never have to Wait(). */
       etherUnit->eu_Unit.unit_OpenCnt--;
 
-      if (etherUnit->eu_Unit.unit_OpenCnt == 0) {
-         ExpungeUnit(etherUnit->eu_UnitNum, EtherDevice);
+      if (etherUnit->eu_Unit.unit_OpenCnt == 0)
+      {
+         ExpungeUnit(etherUnit->eu_UnitNum, globEtherDevice);
          etherUnit = NULL;
       }
 
-      EtherDevice->ed_Device.lib_OpenCnt--;
+      globEtherDevice->ed_Device.lib_OpenCnt--;
 
-      ReleaseSemaphore((APTR) &EtherDevice->ed_DeviceLock);
+      ReleaseSemaphore((APTR) &globEtherDevice->ed_DeviceLock);
 
       // Check to see if we've been asked to expunge.
       // In this case expunge Device now...
-      if (EtherDevice->ed_Device.lib_Flags & LIBF_DELEXP) {
+      if (globEtherDevice->ed_Device.lib_Flags & LIBF_DELEXP) {
+         BPTR DevExpunge(struct Library * DevBase);
+
          seglist = DevExpunge(DevBase);
          DEBUGOUT((VERBOSE_DEVICE, "DevClose(): Device was expunged (cause of an delayed expunge)!\n"));
          DevBase = NULL;
-         EtherDevice = NULL;
+         globEtherDevice = NULL;
       }
    } else {
       DEBUGOUT((VERBOSE_DEVICE, "DevClose() invalid iorequest!\n"));
@@ -509,36 +503,39 @@ BPTR DevExpunge(struct Library * DevBase)
     DEBUGOUT((VERBOSE_DEVICE, "\nDevExpunge(devbase=0x%lx)\n", DevBase));
 
     //Check if device is still used?
-    if(EtherDevice->ed_Device.lib_OpenCnt) {
+    if(globEtherDevice->ed_Device.lib_OpenCnt)
+    {
         //Device is still in use! Mark device itself that it should expunge after next DevClose()...
-        EtherDevice->ed_Device.lib_Flags |= LIBF_DELEXP;
+        globEtherDevice->ed_Device.lib_Flags |= LIBF_DELEXP;
         DEBUGOUT((VERBOSE_DEVICE, "DevExpunge(): Can't expunge because device is still in use (cntr=%ld)!\n",
-              EtherDevice->ed_Device.lib_OpenCnt));
-    } else {
-
+              globEtherDevice->ed_Device.lib_OpenCnt));
+    }
+    else
+    {
        //At this time the unit MUST have been shutdown (on last DevClose()).
        //Because of the special problem that we can't wait here when Expunge is called.
-       if (EtherDevice->ed_Units[0] != NULL) {
+       if (globEtherDevice->ed_Units[0] != NULL)
+       {
           Alert(0x1818);
        }
 
-      /* Free up our library base and function table after
+       /* Free up our library base and function table after
          removing ourselves from the library list. */
-      Disable();
-      Remove((struct Node *)DevBase);
-      Enable();
+       Disable();
+       Remove((struct Node *)DevBase);
+       Enable();
 
-      seglist          = ((struct EtherbridgeDevice*)DevBase)->ed_SegList;
-      ULONG devbase    = (ULONG)DevBase;
-      LONG devbasesize = (ULONG)DevBase->lib_NegSize;
-      devbase          = devbase - devbasesize;
-      devbasesize      += (ULONG)DevBase->lib_PosSize;
+       seglist          = ((struct DeviceDriver*)DevBase)->ed_SegList;
+       ULONG devbase    = (ULONG)DevBase;
+       LONG devbasesize = (ULONG)DevBase->lib_NegSize;
+       devbase          = devbase - devbasesize;
+       devbasesize      += (ULONG)DevBase->lib_PosSize;
 
-      FreeMem((APTR)devbase,devbasesize);
-      EtherDevice = NULL;
-      //The device base is now gone! Do not access them anymore!
+       FreeMem((APTR)devbase,devbasesize);
+       globEtherDevice = NULL;
+       //The device base is now gone! Do not access them anymore!
 
-      DEBUGOUT((VERBOSE_DEVICE, "DevExpunge() ends. Device is expunged now...\n\n"));
+       DEBUGOUT((VERBOSE_DEVICE, "DevExpunge() ends. Device is expunged now...\n\n"));
     }
 
     //If we return a real segment list it will be freed by AmigaOS...
@@ -556,39 +553,44 @@ ULONG DevAbortIO( struct IOSana2Req *ios2,
                   struct Library * DevPointer)                  
 {
    ULONG result = IOERR_NOCMD; //Default: Error
-   struct EtherbridgeUnit *etherUnit;
+   struct DeviceDriverUnit *etherUnit;
 
    DEBUGOUT((VERBOSE_DEVICE, "\nDevAbortIO(ioreq.cmd=0x%lx)\n", (ULONG)ios2->ios2_Req.io_Command));
-   etherUnit = (struct EtherbridgeUnit *)ios2->ios2_Req.io_Unit;
+   etherUnit = (struct DeviceDriverUnit *)ios2->ios2_Req.io_Unit;
    //Abort only pending requests....NT_MESSAGE means "pending"...
-   if (ios2->ios2_Req.io_Message.mn_Node.ln_Type == NT_MESSAGE) {
-
-      switch (ios2->ios2_Req.io_Command) {
-
-         case CMD_READ: {
+   if (ios2->ios2_Req.io_Message.mn_Node.ln_Type == NT_MESSAGE)
+   {
+      switch (ios2->ios2_Req.io_Command)
+      {
+         case CMD_READ:
+         {
             struct BufferManagement *bm = ios2->ios2_BufferManagement;
-            result = AbortReqAndRemove(&bm->bm_RxQueue, ios2, EtherDevice, &bm->bm_RxQueueLock);
+            result = AbortRequestAndRemove(&bm->bm_RxQueue, ios2, globEtherDevice, &bm->bm_RxQueueLock);
             break;
          }
 
          case S2_BROADCAST:
-         case CMD_WRITE: {
+         case CMD_WRITE:
+         {
             Forbid();
-            result = AbortReqAndRemove((struct MinList *)&etherUnit->eu_Tx->mp_MsgList,
-                  ios2, EtherDevice, NULL);
+            result = AbortRequestAndRemove((struct MinList *)&etherUnit->eu_Tx->mp_MsgList,
+                  ios2, globEtherDevice, NULL);
             Permit();
             break;
          }
 
-         case S2_ONEVENT: {
+         case S2_ONEVENT:
+         {
             Forbid();
-            result = AbortReqAndRemove(&etherUnit->eu_Events, ios2, EtherDevice, NULL);
+            result = AbortRequestAndRemove(&etherUnit->eu_Events, ios2, globEtherDevice, NULL);
             Permit();
             break;
          }
 
-         case S2_READORPHAN: {
-            result = AbortReqAndRemove(&etherUnit->eu_ReadOrphan, ios2, EtherDevice, &etherUnit->eu_ReadOrphanLock);
+         case S2_READORPHAN:
+         {
+            result = AbortRequestAndRemove(&etherUnit->eu_ReadOrphan, ios2, globEtherDevice,
+                  &etherUnit->eu_ReadOrphanLock);
             break;
          }
 
@@ -597,12 +599,14 @@ ULONG DevAbortIO( struct IOSana2Req *ios2,
             DEBUGOUT((VERBOSE_DEVICE,"Unable to break this iorequest: 0x%x", ios2));
             break;
          }
-        }
-    } else {
-       DEBUGOUT((VERBOSE_DEVICE,"DevAbortIO(): Request was not pending! Not removed!\n"));
-       result = S2ERR_NO_ERROR; //Silent ok.
-    }
-    return(result);
+      }
+   }
+   else
+   {
+      DEBUGOUT((VERBOSE_DEVICE,"DevAbortIO(): Request was not pending! Not removed!\n"));
+      result = S2ERR_NO_ERROR; //Silent ok.
+   }
+   return(result);
 }
 
 /**
@@ -617,9 +621,9 @@ ULONG DevAbortIO( struct IOSana2Req *ios2,
  * @return io_error code: if found => IOERR_ABORTED, if NOT found => S2ERR_BAD_ARGUMENT
  */
 static
-ULONG AbortReqAndRemove(struct MinList *minlist,
+ULONG AbortRequestAndRemove(struct MinList *minlist,
                struct IOSana2Req *ios2,
-               struct EtherbridgeDevice *EtherDevice,
+               struct DeviceDriver *EtherDevice,
                struct SignalSemaphore * lock)
 {
    struct Node *node, *next;
@@ -627,23 +631,28 @@ ULONG AbortReqAndRemove(struct MinList *minlist,
 
    DEBUGOUT((VERBOSE_DEVICE, "AbortReq(ioreq.cmd=0x%x)\n", ios2->ios2_Req.io_Command));
 
-   if (lock) ObtainSemaphore(lock);
-   {
-      node = (struct Node *) minlist->mlh_Head;
-      while (node->ln_Succ) {
-         next = node->ln_Succ;
-         if (node == (struct Node *) ios2) {
-            Remove((struct Node *) ios2);
-            result = ios2->ios2_Req.io_Error = IOERR_ABORTED;
-            TermIO(ios2, EtherDevice);
-            break;
-         }
-         node = next;
-      }
-   }
-   if (lock) ReleaseSemaphore(lock);
+   if (lock)
+      ObtainSemaphore(lock);
 
-   if (result != IOERR_ABORTED) {
+   node = (struct Node *) minlist->mlh_Head;
+   while (node->ln_Succ)
+   {
+      next = node->ln_Succ;
+      if (node == (struct Node *) ios2)
+      {
+         Remove((struct Node *) ios2);
+         result = ios2->ios2_Req.io_Error = IOERR_ABORTED;
+         TermIO(ios2, EtherDevice);
+         break;
+      }
+      node = next;
+   }
+
+   if (lock)
+      ReleaseSemaphore(lock);
+
+   if (result != IOERR_ABORTED)
+   {
       DEBUGOUT((VERBOSE_DEVICE, "AbortReqAndRemove(): IORequest not found! Nothing to abort!"));
    }
 
@@ -656,7 +665,7 @@ ULONG AbortReqAndRemove(struct MinList *minlist,
  * @param minlist
  * @param EtherDevice
  */
-static void  AbortReqList(struct MinList *minlist,struct EtherbridgeDevice * EtherDevice)
+static void  AbortReqList(struct MinList *minlist,struct DeviceDriver * EtherDevice)
 {
     struct Node *node, *next;
     struct IOSana2Req * ActIos2;
@@ -685,7 +694,8 @@ static void  AbortReqList(struct MinList *minlist,struct EtherbridgeDevice * Eth
  * @param STDETHERARGS
  * @param STDETHERARGS
  */
-VOID DevCmdFlush(STDETHERARGS) {
+VOID DevCmdFlush(STDETHERARGS)
+{
    struct BufferManagement *bm;
 
    DEBUGOUT((VERBOSE_DEVICE, "\nDevCmdFlush(ioreq=0x%lx)\n", (ULONG)ios2));
@@ -693,9 +703,10 @@ VOID DevCmdFlush(STDETHERARGS) {
    //Abort all READ Requests of all opener...
    ObtainSemaphore((APTR)&etherUnit->eu_BuffMgmtLock);
    bm = (struct BufferManagement *) etherUnit->eu_BuffMgmt.mlh_Head;
-   while (bm->bm_Node.mln_Succ) {
+   while (bm->bm_Node.mln_Succ)
+   {
       ObtainSemaphore((APTR) &bm->bm_RxQueueLock);
-      AbortReqList(&bm->bm_RxQueue, EtherDevice);
+      AbortReqList(&bm->bm_RxQueue, globEtherDevice);
       ReleaseSemaphore((APTR) &bm->bm_RxQueueLock);
       bm = (struct BufferManagement *) bm->bm_Node.mln_Succ;
    }
@@ -704,13 +715,13 @@ VOID DevCmdFlush(STDETHERARGS) {
 
    Forbid();
    //Stop all pending Write Requests
-   AbortReqList((struct MinList *) &etherUnit->eu_Tx->mp_MsgList, EtherDevice);
+   AbortReqList((struct MinList *) &etherUnit->eu_Tx->mp_MsgList, globEtherDevice);
    //Stop all pending S2_ONEVENT:
-   AbortReqList(&etherUnit->eu_Events, EtherDevice);
+   AbortReqList(&etherUnit->eu_Events, globEtherDevice);
    Permit();
 
    if (NULL != ios2)
-      TermIO(ios2, EtherDevice);
+      TermIO(ios2, globEtherDevice);
 
    DEBUGOUT((VERBOSE_DEVICE, "\nDevCmdFlush() ends.\n"));
 }
@@ -723,22 +734,22 @@ VOID DevCmdFlush(STDETHERARGS) {
  * @param EtherDevice
  * @return
  */
-struct EtherbridgeUnit *InitETHERUnit(ULONG s2unit, struct EtherbridgeDevice *EtherDevice)
+struct DeviceDriverUnit *InitUnitProcess(ULONG s2unit, struct DeviceDriver *EtherDevice)
 {
-    struct EtherbridgeUnit *etherUnit;
-    struct TagItem NPTags[]={{NP_Entry, (ULONG)&DevProcEntry},
-                             {NP_Name , (ULONG) DEVICE_TASK_NAME },
-                             {NP_Priority, ETHER_PRI} ,
-                             {NP_FreeSeglist , FALSE} ,
-                             {NP_StackSize, 8000},
-                             {TAG_DONE, 0}};
+    struct DeviceDriverUnit *etherUnit;
+    struct TagItem NPTags[]={{NP_Entry,      (ULONG)&DevProcEntry},
+                             {NP_Name ,      (ULONG) DEVICE_TASK_NAME },
+                             {NP_Priority,   ETHER_PRI} ,
+                             {NP_FreeSeglist,FALSE} ,
+                             {NP_StackSize,  8000},
+                             {TAG_DONE,      0}};
 
     /* Check to see if the Unit is already up and running.  If
        it is, just drop through.  If not, try to start it up. */
     if(!EtherDevice->ed_Units[s2unit])
     {
             /* Allocate a new Unit structure */
-            etherUnit = AllocMem(sizeof(struct EtherbridgeUnit), MEMF_CLEAR | MEMF_PUBLIC);
+            etherUnit = AllocMem(sizeof(struct DeviceDriverUnit), MEMF_CLEAR | MEMF_PUBLIC);
             if( etherUnit )
             {
                 /* Do some initialization on the Unit structure */
@@ -746,12 +757,11 @@ struct EtherbridgeUnit *InitETHERUnit(ULONG s2unit, struct EtherbridgeDevice *Et
 
                 etherUnit->eu_Unit.unit_MsgPort.mp_Node.ln_Type = NT_MSGPORT;
                 etherUnit->eu_Unit.unit_MsgPort.mp_Flags = PA_IGNORE;
-                etherUnit->eu_Unit.unit_MsgPort.mp_Node.ln_Name = "etherbridge.port";
+                etherUnit->eu_Unit.unit_MsgPort.mp_Node.ln_Name = DEVICE_NAME ".port";
 
                 etherUnit->eu_UnitNum = s2unit;
                 etherUnit->eu_Device  = (struct Device *) EtherDevice;
 
-                // Setze MaxiumTransmitUnit auf 1500 Byte (Ethernet)
                 etherUnit->eu_MTU = 1500;
 
                 InitSemaphore((APTR)&etherUnit->eu_BuffMgmtLock);
@@ -792,7 +802,7 @@ struct EtherbridgeUnit *InitETHERUnit(ULONG s2unit, struct EtherbridgeDevice *Et
                 {
                     // The Unit process couldn't start for some reason, 
                     // so free the Unit structure.
-                    FreeMem(etherUnit, sizeof(struct EtherbridgeUnit));
+                    FreeMem(etherUnit, sizeof(struct DeviceDriverUnit));
                     etherUnit = NULL;
                 }
                 else
@@ -814,59 +824,21 @@ struct EtherbridgeUnit *InitETHERUnit(ULONG s2unit, struct EtherbridgeDevice *Et
  * @param EtherDevice
  * @return
  */
-static BOOL ReadConfig( struct EtherbridgeDevice *EtherDevice )
+static BOOL ReadConfig( struct DeviceDriver *etherDevice )
 {
-    int iUsePktDrvNo;
-
     DEBUGOUT((VERBOSE_DEVICE, "ReadConfig()\n"));
 
     RegistryInit( sConfigFile );
     {
-       char tmpStringBuffer[20] = {0};
-
-       debugLevel =                       ReadKeyInt("DEBUGLEV"       ,0);
-       strncpy( sPCCmd,                   ReadKeyStr("PCSERVER"       ,"c:\\ebserver.exe"),80-1 );
-       iComMode =                         ReadKeyInt("COMMODE"        ,0);
-       iUsePktDrvNo =                     ReadKeyInt("USEPKTDRVNO"    ,0);
-       EtherDevice->ed_showMessages   =   ReadKeyInt("SHOWMESSAGES"   ,1);
-       EtherDevice->ed_startDosServer =   ReadKeyInt("STARTPCSERVER"  ,1);
-       EtherDevice->ed_startPacketDriver =ReadKeyInt("STARTPKTDRV"    ,1);
-
-
-       if ((iUsePktDrvNo >= 10) || (iUsePktDrvNo < 0)) iUsePktDrvNo = 0;
-
-       //TODO: Check why snprintf throws a compiler warning?
-       sprintf(tmpStringBuffer, "PKTDRV%d",iUsePktDrvNo );
-       strncpy(sPCPktDrvCmd, ReadKeyStr(tmpStringBuffer,""), sizeof(sPCPktDrvCmd)-1 );
-       sprintf(tmpStringBuffer, "PKTDRVPARAM%d",iUsePktDrvNo );
-       strncpy(sPCPktDrvPar, ReadKeyStr(tmpStringBuffer,""), sizeof(sPCPktDrvPar)-1 );
+       debugLevel =                       ReadKeyInt("DEBUGLEV"       , false);
+       etherDevice->ed_showMessages   =   ReadKeyInt("SHOWMESSAGES"   , true);
     }
     RegistryDestroy();
 
-
-    // There is a special "Commode" value: "-1"
-    // This means chose the right mode for the installed Bridgeboard card automatically:
-    // A2088 + A2286 => "1" (Polling)
-    // A2386 => 0 (Janus Int Signals)
-    if (iComMode == -1) {
-       if (EtherDevice->ed_BBType == A2386) {
-          iComMode = 0; //Use interrupts: A2386
-       } else {
-          iComMode = 1; //Use polling: A2286 + 2088
-       }
-    }
-
-    DEBUGOUT((VERBOSE_DEVICE,"\n\n ##### Etherbridge Device #####\n"));
+    DEBUGOUT((VERBOSE_DEVICE,"\n\n ##### " DEVICE_NAME " Device #####\n"));
     DEBUGOUT((VERBOSE_DEVICE,"%s\n", DevIdString));
     DEBUGOUT((VERBOSE_DEVICE,"DebugLev= %ld\n", (LONG)debugLevel));
-    DEBUGOUT((VERBOSE_DEVICE,"DrvCmd  = %s\n", sPCPktDrvCmd));
-    DEBUGOUT((VERBOSE_DEVICE,"DrvPar  = %s\n", sPCPktDrvPar));
-    DEBUGOUT((VERBOSE_DEVICE,"sPCCmd  = %s\n", sPCCmd));
-    DEBUGOUT((VERBOSE_DEVICE,"ComMode = %ld\n", (LONG)iComMode));
-    DEBUGOUT((VERBOSE_DEVICE,"PktDrvNo= %ld\n", (LONG)iUsePktDrvNo));
-    DEBUGOUT((VERBOSE_DEVICE,"verboseonerror= %ld\n", (LONG)EtherDevice->ed_showMessages));
-    DEBUGOUT((VERBOSE_DEVICE,"STARTPCSERVER = %d\n", EtherDevice->ed_startDosServer));
-    DEBUGOUT((VERBOSE_DEVICE,"STARTPKTDRV = %d\n", EtherDevice->ed_startPacketDriver));
+    DEBUGOUT((VERBOSE_DEVICE,"verboseonerror= %ld\n", (LONG)globEtherDevice->ed_showMessages));
 
     return true;
 }
@@ -881,11 +853,12 @@ static BOOL ReadConfig( struct EtherbridgeDevice *EtherDevice )
  * @param etherUnit
  * @param EtherDevice
  */
-VOID ExpungeUnit(UBYTE unitNumber, struct EtherbridgeDevice *EtherDevice) {
+VOID ExpungeUnit(UBYTE unitNumber, struct DeviceDriver *etherDevice)
+{
    DEBUGOUT((VERBOSE_DEVICE,"ExpungeUnit(%d)...\n", unitNumber));
-   struct EtherbridgeUnit * etherUnit = EtherDevice->ed_Units[unitNumber];
-   if (etherUnit) {
-
+   struct DeviceDriverUnit * etherUnit = etherDevice->ed_Units[unitNumber];
+   if (etherUnit)
+   {
       DEBUGOUT((VERBOSE_DEVICE,"ExpungeUnit():1 (deactivate unit number %d)\n", unitNumber));
 
       struct Task * unittask = (struct Task *) etherUnit->eu_Proc;
@@ -901,14 +874,14 @@ VOID ExpungeUnit(UBYTE unitNumber, struct EtherbridgeDevice *EtherDevice) {
 
       DEBUGOUT((VERBOSE_DEVICE,"ExpungeUnit():22\n"));
 
-      FreeMem(etherUnit, sizeof(struct EtherbridgeUnit));
+      FreeMem(etherUnit, sizeof(struct DeviceDriverUnit));
 
-      EtherDevice->ed_Units[unitNumber] = NULL;
+      etherDevice->ed_Units[unitNumber] = NULL;
       etherUnit = NULL;
    }
 
-   //Now safety deallocate any Janus Service.
-   //disconnectPCService();
+   hal_deinitialization();
+
 
    DEBUGOUT((VERBOSE_DEVICE,"ExpungeUnit():3\n"));
 
@@ -918,11 +891,10 @@ VOID ExpungeUnit(UBYTE unitNumber, struct EtherbridgeDevice *EtherDevice) {
 /**
  * This is the entry point for the Device Unit process.
  */
-SAVEDS
-void DevProcEntry()
+SAVEDS void DevProcEntry()
 {     
     struct Process *proc;
-    struct EtherbridgeUnit *etherUnit;
+    struct DeviceDriverUnit *etherUnit;
     struct StartupMessage *startupMessage;
     struct IOSana2Req *ios2;
     ULONG waitmask,signals;
@@ -942,7 +914,7 @@ void DevProcEntry()
     startupMessage = (void *)GetMsg((void*)&proc->pr_MsgPort);
 
     /* Grab our Unit pointer. */
-    etherUnit    = (struct EtherbridgeUnit *)startupMessage->Unit;
+    etherUnit    = (struct DeviceDriverUnit *)startupMessage->Unit;
 
     /* Attempt to allocate a signal bit for our Unit MsgPort. */
     msgPortSignalBit = AllocSignal(-1L);
@@ -984,6 +956,7 @@ void DevProcEntry()
 
         waitmask = (1L<<msgPortSignalBit)  |  transportMask | SIGBREAKF_CTRL_F | (1L<<configFileNotifySigBit);
 
+        //Unit Task Service Loop:
         for(;;)
         {
             DEBUGOUT((VERBOSE_DEVICE,"\nDevice Unit Process: Just wait for signals\n"));
@@ -996,52 +969,38 @@ void DevProcEntry()
                break;
             }
          
-
-
-            //Read / Writes ?
+            //Packet reads or writes ?
             while((etherUnit->eu_State & ETHERUF_ONLINE) &&
-                  (serviceWritePackets(etherUnit, EtherDevice) || serviceReadPackets(etherUnit, EtherDevice))){
+                  (serviceWritePackets(etherUnit, globEtherDevice) || serviceReadPackets(etherUnit, globEtherDevice)))
+            {
                //Nothing. Repeat until nothing can be done.
             };
 
             // An new or more IO Request(s) to perform?
-            if ((signals & (1l << msgPortSignalBit))) {
-               while ((ios2 = (void *) GetMsg((void *) etherUnit)) != NULL) {
+            if ((signals & (1l << msgPortSignalBit)))
+            {
+               while ((ios2 = (void *) GetMsg((void *) etherUnit)) != NULL)
+               {
                   DEBUGOUT((VERBOSE_DEVICE, "Device Unit Process: Perform IORequest: cmd=%ld\n\n", ios2->ios2_Req.io_Command));
-                  PerformIO(ios2, EtherDevice);
+                  PerformIO(ios2, globEtherDevice);
                   DEBUGOUT((VERBOSE_DEVICE, "Device Unit Process: IORequest finished\n"));
                }
             }
 
-            // Wurde die Config-Datei veraendert ? (Dos-Notify)
+            // Configuration file changed?
             if (signals & (1L<<configFileNotifySigBit))
             {
-                //configdatei neu einlesen
                 DEBUGOUT((VERBOSE_DEVICE,"receive file notify signal!\n\n"));
-                ReadConfig(EtherDevice);
-            }
-
-            // Count Signals from PC ( "VBeam Poll" and "Janus Interrupt Handler", both together )
-            if (signals & (1L << etherUnit->eu_Sigbit)) {
-               DEBUGOUT((VERBOSE_DEVICE,"Device Unit Process: Signaling from PC Side\n"));
-               sigBitCntr++;
+                ReadConfig(globEtherDevice);
             }
          }
 
          DEBUGOUT((VERBOSE_DEVICE,"Unit Process: Cleaning up all signal handlers...\n"));
 
-         //Uninstall any interrupt handler. Do this only by the unit process because signals from it is
-         //used by the signals handlers...
-         //uninstallHandler();
+         //stops access to the hardware in any way...
+         hal_deinitialization();
 
-         //Terminate the PC Side Server (send him a command), after the unit process is terminated.
-         //ShutDownPCServer();
-
-         //Disconnect Janus Service only after the unit process had died.
-         //He may used the janus structures...
-        // disconnectPCService();
-
-         // Notify der Configdatei beenden
+         // Stop notification the config file
          EndNotify(&configNotify);
          bzero(&configNotify, sizeof (configNotify));
 
@@ -1060,9 +1019,11 @@ void DevProcEntry()
          Forbid();
          Signal((struct Task *)etherUnit->eu_Proc,SIGBREAKF_CTRL_F);
     }
-    else {
+    else
+    {
         /* Something went wrong in the init code.  Drop out. */
-        if(msgPortSignalBit != -1) {
+        if(msgPortSignalBit != -1)
+        {
            FreeSignal(msgPortSignalBit);
            msgPortSignalBit = -1;
         }
@@ -1089,14 +1050,14 @@ void DevProcEntry()
  * @param ios2
  * @param deviceBase
  */
-VOID DevBeginIO(struct IOSana2Req *ios2,
+VOID DevBeginIO(struct IOSana2Req * ios2,
                 struct Library * deviceBase)
 {
    register UWORD Cmd = ios2->ios2_Req.io_Command;
    if(((1L << Cmd) & PERFORM_NOW) || (Cmd >= NSCMD_DEVICEQUERY) )
    {
       //Processed now!
-      PerformIO(ios2,EtherDevice);
+      PerformIO(ios2,globEtherDevice);
    }
    else
    {
@@ -1115,14 +1076,12 @@ VOID DevBeginIO(struct IOSana2Req *ios2,
  * @param EtherDevice
  */
 VOID PerformIO(struct IOSana2Req *ios2,
-               struct EtherbridgeDevice *EtherDevice)
+               struct DeviceDriver *EtherDevice)
 {
-    struct EtherbridgeUnit *etherUnit;
+    struct DeviceDriverUnit *etherUnit;
 
-    etherUnit    = (struct EtherbridgeUnit *)ios2->ios2_Req.io_Unit;
-
+    etherUnit    = (struct DeviceDriverUnit *)ios2->ios2_Req.io_Unit;
     ios2->ios2_Req.io_Error = 0;
-    
     switch(ios2->ios2_Req.io_Command)
     {
        case CMD_WRITE:                DevCmdWritePacket(ios2,etherUnit,EtherDevice);
@@ -1138,10 +1097,10 @@ VOID PerformIO(struct IOSana2Req *ios2,
        case S2_MULTICAST:             DevCmdWritePacket(ios2,etherUnit,EtherDevice);
                                       break;
 
-        case CMD_FLUSH:                DevCmdFlush(ios2,etherUnit,EtherDevice);
-                                       break;
+       case CMD_FLUSH:                DevCmdFlush(ios2,etherUnit,EtherDevice);
+                                      break;
 
-                                       //TODO: Add support:
+       //TODO: Add support:
 /*        case S2_ADDMULTICASTADDRESS:   DevCmdAddMulti(ios2,etherUnit,EtherDevice);
                                        break;
 
@@ -1207,14 +1166,18 @@ VOID PerformIO(struct IOSana2Req *ios2,
  * @param ios2
  * @param EtherDevice
  */
-VOID TermIO(struct IOSana2Req *ios2,struct EtherbridgeDevice *EtherDevice)
+VOID TermIO(struct IOSana2Req *ios2,struct DeviceDriver *EtherDevice)
 {
     DEBUGOUT((VERBOSE_DEVICE,"TermIO ioreq=0x%lx\n", ios2));
 
-    if(!(ios2->ios2_Req.io_Flags & IOF_QUICK)) {
-       if (ios2->ios2_Req.io_Message.mn_ReplyPort != NULL ) {
+    if(!(ios2->ios2_Req.io_Flags & IOF_QUICK))
+    {
+       if (ios2->ios2_Req.io_Message.mn_ReplyPort != NULL )
+       {
           ReplyMsg(&ios2->ios2_Req.io_Message);
-       } else {
+       }
+       else
+       {
           Alert(1); //no reply port????
        }
     }
@@ -1224,8 +1187,8 @@ VOID TermIO(struct IOSana2Req *ios2,struct EtherbridgeDevice *EtherDevice)
 ** This routine is called whenever an "important" SANA-II event occurs.
 */
 VOID DoEvent(ULONG events,
-             struct EtherbridgeUnit *etherUnit,
-             struct EtherbridgeDevice *EtherDevice)
+             struct DeviceDriverUnit *etherUnit,
+             struct DeviceDriver *EtherDevice)
 {
    struct IOSana2Req *ios2;
    struct IOSana2Req *ios2_next;
@@ -1234,12 +1197,15 @@ VOID DoEvent(ULONG events,
    DEBUGOUT((VERBOSE_DEVICE,"### DoEvent: Fire Event 0x%lx\n", events));
 
    Forbid();
+
    //Check ALL pending event requests
    ios2 = (struct IOSana2Req *) etherUnit->eu_Events.mlh_Head;
-   while (ios2->ios2_Req.io_Message.mn_Node.ln_Succ) {
+   while (ios2->ios2_Req.io_Message.mn_Node.ln_Succ)
+   {
       ios2_next = (struct IOSana2Req *) ios2->ios2_Req.io_Message.mn_Node.ln_Succ;
       /* Are they waiting for any of these events? */
-      if (ios2->ios2_WireError & events) {
+      if (ios2->ios2_WireError & events)
+      {
          ios2->ios2_Req.io_Error = 0;
          ios2->ios2_WireError = events;
          Remove((struct Node *) ios2);
@@ -1250,7 +1216,8 @@ VOID DoEvent(ULONG events,
    }
    Permit();
 
-   if (!eventFired) {
+   if (!eventFired)
+   {
       DEBUGOUT((VERBOSE_DEVICE,"  No one was waiting for that event. Event discarded.\n", events));
    }
 }
@@ -1284,8 +1251,8 @@ VOID DevCmdWritePacket(STDETHERARGS)
             /* Sorry, the packet is too long! */
             ios2->ios2_Req.io_Error = S2ERR_MTU_EXCEEDED;
             ios2->ios2_WireError = S2WERR_GENERIC_ERROR;
-            TermIO(ios2,EtherDevice);
-            DoEvent(S2EVENT_TX,etherUnit,EtherDevice);
+            TermIO(ios2,globEtherDevice);
+            DoEvent(S2EVENT_TX,etherUnit,globEtherDevice);
         }
     }
     else
@@ -1293,7 +1260,7 @@ VOID DevCmdWritePacket(STDETHERARGS)
         /* Sorry, we're offline */
         ios2->ios2_Req.io_Error = S2ERR_OUTOFSERVICE;
         ios2->ios2_WireError = S2WERR_UNIT_OFFLINE;
-        TermIO(ios2,EtherDevice);
+        TermIO(ios2,globEtherDevice);
     }
 }
 ///
@@ -1307,36 +1274,31 @@ VOID DevCmdOnline(STDETHERARGS)
 
    DEBUGOUT((VERBOSE_DEVICE,"DevCmdOnline()\n"));
 
-   if(!(etherUnit->eu_State & ETHERUF_CONFIG)) {
+   if(!(etherUnit->eu_State & ETHERUF_CONFIG))
+   {
       ios2->ios2_Req.io_Error = S2ERR_BAD_STATE;
       ios2->ios2_WireError    = S2WERR_NOT_CONFIGURED;
       goto end;
    }
 
-   if (!(etherUnit->eu_State & ETHERUF_ONLINE)) {
-
+   if (!(etherUnit->eu_State & ETHERUF_ONLINE))
+   {
       //TODO connect
 
       /* In case someone wants to know...*/
-      DoEvent(S2EVENT_ONLINE, etherUnit, EtherDevice);
+      DoEvent(S2EVENT_ONLINE, etherUnit, globEtherDevice);
 
       // Zeit des auf Online-gehends merken
       DateStamp(&StartTime);
       GlobStat.LastStart.tv_secs = StartTime.ds_Days * 24 * 60 * 60 + StartTime.ds_Minute * 60;
       GlobStat.LastStart.tv_micro = StartTime.ds_Tick;
 
-      //Promisc Modus ?
-      /*
-      if (EtherDevice->ed_Device.lib_Flags & ETHERUF_PROMISC)
-         SetPromMode(true);
-      else
-         SetPromMode(false);
-         */
+      //TODO: set Promisc Modus or not
    }
 
    end:
 
-   TermIO(ios2,EtherDevice);
+   TermIO(ios2,globEtherDevice);
    DEBUGOUT((VERBOSE_DEVICE,"DevCmdOnline() ends.\n"));
 }
 ///
@@ -1350,17 +1312,17 @@ void DevCmdOffline(STDETHERARGS)
       {
          etherUnit->eu_State &= (~ETHERUF_ONLINE);
 
-         DoEvent(S2EVENT_OFFLINE, etherUnit, EtherDevice);
+         DoEvent(S2EVENT_OFFLINE, etherUnit, globEtherDevice);
 
          // Alle evtl. ReadRequests abbrechen....
-         DevCmdFlush(NULL, etherUnit, EtherDevice);
+         DevCmdFlush(NULL, etherUnit, globEtherDevice);
 
          //TODO go Offline
       }
 
       // going offline without an iorequest is possible!
       if (ios2)
-         TermIO(ios2, EtherDevice);
+         TermIO(ios2, globEtherDevice);
 
       DEBUGOUT((VERBOSE_DEVICE,"DevCmdOffline() end\n"));
    }
@@ -1372,12 +1334,14 @@ VOID DevCmdReadPacket(STDETHERARGS)
    struct BufferManagement *bm;
 
    DEBUGOUT((VERBOSE_DEVICE,"\n*DevCmdReadPacket(type=%ld,ioreq=0x%lx)\n", (ULONG)ios2->ios2_PacketType, ios2));
-   if (etherUnit->eu_State & ETHERUF_ONLINE) {
+   if (etherUnit->eu_State & ETHERUF_ONLINE)
+   {
       /* Find the appropriate queue for this IO request */
       ObtainSemaphore(&etherUnit->eu_BuffMgmtLock);
       bm = (struct BufferManagement *) etherUnit->eu_BuffMgmt.mlh_Head;
       while (bm->bm_Node.mln_Succ) {
-         if (bm == (struct BufferManagement *) ios2->ios2_BufferManagement) {
+         if (bm == (struct BufferManagement *) ios2->ios2_BufferManagement)
+         {
             ObtainSemaphore((APTR) &bm->bm_RxQueueLock);
             CHECK_ALREADY_QUEUED((struct List *) &bm->bm_RxQueue, (struct Node *) ios2);
 
@@ -1392,16 +1356,19 @@ VOID DevCmdReadPacket(STDETHERARGS)
       }
       ReleaseSemaphore(&etherUnit->eu_BuffMgmtLock);
       /* Did we fall of the end of the list? */
-      if (!bm->bm_Node.mln_Succ) {
+      if (!bm->bm_Node.mln_Succ)
+      {
          ios2->ios2_Req.io_Error = S2ERR_BAD_ARGUMENT;
          ios2->ios2_WireError = S2WERR_GENERIC_ERROR;
-         TermIO(ios2, EtherDevice);
+         TermIO(ios2, globEtherDevice);
       }
-   } else {
+   }
+   else
+   {
       /* Sorry, we're offline */
       ios2->ios2_Req.io_Error = S2ERR_OUTOFSERVICE;
       ios2->ios2_WireError = S2WERR_UNIT_OFFLINE;
-      TermIO(ios2, EtherDevice);
+      TermIO(ios2, globEtherDevice);
    }
 }
 ///
@@ -1425,10 +1392,10 @@ VOID DevCmdReadOrphan(STDETHERARGS)
     else
     {
         /* Sorry, we're offline */
-       DEBUGOUT((VERBOSE_DEVICE,"  Failed readorphan. not online!...\n"));
+        DEBUGOUT((VERBOSE_DEVICE,"  Failed readorphan. not online!...\n"));
         ios2->ios2_Req.io_Error = S2ERR_OUTOFSERVICE;
         ios2->ios2_WireError    = S2WERR_UNIT_OFFLINE;
-        TermIO(ios2,EtherDevice);
+        TermIO(ios2,globEtherDevice);
     }
 }
 ///
@@ -1436,12 +1403,13 @@ VOID DevCmdReadOrphan(STDETHERARGS)
 /*
 ** This function handles S2_DEVICEQUERY comands.
 */
-VOID DevCmdDeviceQuery(STDETHERARGS) {
+VOID DevCmdDeviceQuery(STDETHERARGS)
+{
    DEBUGOUT((VERBOSE_DEVICE,"\n*DeviceQuery(ios2=0x%lx, ios2_StatData=0x%lx)\n", ios2, ios2->ios2_StatData));
 
    struct Sana2DeviceQuery *deviceStatisticData = (struct Sana2DeviceQuery *) ios2->ios2_StatData;
-   if (deviceStatisticData) {
-
+   if (deviceStatisticData)
+   {
       DEBUGOUT((VERBOSE_DEVICE,"  SizeAvailable=%ld\n", deviceStatisticData->SizeAvailable));
 
       //We copy all or nothing of the device information.
@@ -1458,7 +1426,9 @@ VOID DevCmdDeviceQuery(STDETHERARGS) {
          ios2->ios2_Req.io_Error = S2ERR_BAD_ARGUMENT;
          ios2->ios2_WireError = S2WERR_GENERIC_ERROR;
       }
-   } else {
+   }
+   else
+   {
       ios2->ios2_Req.io_Error = S2ERR_BAD_ARGUMENT;
       ios2->ios2_WireError = S2WERR_NULL_POINTER;
    }
@@ -1470,9 +1440,7 @@ VOID DevCmdDeviceQuery(STDETHERARGS) {
    TermIO(ios2, etherDevice);
 }
 
-///
 
-///VOID DevCmdGetStationAddress(STDETHERARGS)
 /*
 ** This function handles S2_GETSTATIONADDRESS commands.
 ** This is usually the first command that is called by an stack.
@@ -1482,11 +1450,10 @@ VOID DevCmdGetStationAddress(STDETHERARGS)
 {
     DEBUGOUT((VERBOSE_DEVICE,"\n*DevCmdGetStationAddress\n"));
 
-    //TODO get station address
+    //TODO: get station address
 
-    TermIO(ios2,EtherDevice);
+    TermIO(ios2,globEtherDevice);
 }
-///
 
 
 /**
@@ -1505,7 +1472,7 @@ VOID DevCmdConfigInterface(STDETHERARGS)
        etherUnit->eu_State |= ETHERUF_CONFIG;
    
        //Set device also online
-       DevCmdOnline(ios2,etherUnit,EtherDevice);
+       DevCmdOnline(ios2,etherUnit,globEtherDevice);
     }
     else
     {
@@ -1514,7 +1481,7 @@ VOID DevCmdConfigInterface(STDETHERARGS)
         /* Sorry, we're already configured. */
         ios2->ios2_Req.io_Error = S2ERR_BAD_STATE;
         ios2->ios2_WireError = S2WERR_IS_CONFIGURED;
-        TermIO(ios2,EtherDevice);
+        TermIO(ios2,globEtherDevice);
     }
 }
 
@@ -1558,7 +1525,7 @@ VOID DevCmdTrackType(STDETHERARGS)
     }
     ReleaseSemaphore((APTR)&etherUnit->eu_TrackLock);
 
-    TermIO(ios2,EtherDevice);
+    TermIO(ios2,globEtherDevice);
 }
 ///
 
@@ -1597,7 +1564,7 @@ VOID DevCmdUnTrackType(STDETHERARGS)
     }
     ReleaseSemaphore((APTR)&etherUnit->eu_TrackLock);
 
-    TermIO(ios2,EtherDevice);
+    TermIO(ios2,globEtherDevice);
 }
 
 ///
@@ -1615,15 +1582,6 @@ void DevCmdGlobStats(STDETHERARGS)
       Stat->PacketsReceived      = GlobStat.PacketsReceived;
       Stat->PacketsSent          = GlobStat.PacketsSent;
       Stat->BadData              = 0;
-
-      if ((etherUnit->eu_State & ETHERUF_ONLINE) && w_param)
-      {
-         //Nur wenn online , da "w_param" nur definiert zw. Online und Offline !!!
-         //Stat->PacketsReceived      = w_param->irec;
-         //Stat->PacketsSent          = w_param->ixmit;
-         //Stat->BadData              = w_param->ierrors;
-      }
-
       Stat->Overruns             = 0;
       Stat->UnknownTypesReceived = GlobStat.UnknownTypesReceived;
       Stat->Reconfigurations     = 0;
@@ -1637,7 +1595,7 @@ void DevCmdGlobStats(STDETHERARGS)
       ios2->ios2_WireError = S2WERR_NULL_POINTER;
    }   
 
-   TermIO(ios2,EtherDevice);
+   TermIO(ios2,globEtherDevice);
 }
 ///
 
@@ -1657,7 +1615,7 @@ VOID DevCmdOnEvent(STDETHERARGS)
     {
       ios2->ios2_Req.io_Error = 0;
       ios2->ios2_WireError &= (S2EVENT_ONLINE | S2EVENT_OFFLINE);
-      TermIO(ios2, EtherDevice);
+      TermIO(ios2, globEtherDevice);
       return;
    }
 
@@ -1668,14 +1626,12 @@ VOID DevCmdOnEvent(STDETHERARGS)
     Permit();
 }
 
-///void getmcaf(struct ETHERDevice *EtherDevice, ULONG * af)
-void getmcaf(struct EtherbridgeDevice *EtherDevice, ULONG * af)      
+void getmcaf(struct DeviceDriver *EtherDevice, ULONG * af)      
 {
    register UBYTE *cp, c;
    register ULONG crc;
    register int i, len;
    struct MCAF_Adresse * ActNode;
-
 
    // * Set up multicast address filter by passing all multicast addresses
    // * through a crc generator, and then using the high order 6 bits as an
@@ -1731,16 +1687,16 @@ VOID DevCmdAddMulti(STDETHERARGS)
 
    print(VERBOSE_DEVICE,"*AddMulticast\n");
 
-   ObtainSemaphore((APTR)&EtherDevice->ed_MCAF_Lock);
+   ObtainSemaphore((APTR)&globEtherDevice->ed_MCAF_Lock);
    //Gibts die Adresse bereits in der Liste ?
-   ActNode = GET_FIRST(EtherDevice->ed_MCAF);
+   ActNode = GET_FIRST(globEtherDevice->ed_MCAF);
    while(IS_VALID(ActNode))
    { 
       // ist das unsere Adresse ?
       if (memcmp( ActNode->MCAF_Adr, ios2->ios2_SrcAddr, 6)==0)
       {
          //gibts bereits => ende !
-         TermIO(ios2,EtherDevice);
+         TermIO(ios2,globEtherDevice);
          goto end;
       }
       ActNode = GET_NEXT(ActNode);
@@ -1756,10 +1712,10 @@ VOID DevCmdAddMulti(STDETHERARGS)
       copyEthernetAddress( ios2->ios2_SrcAddr, NewMCAF->MCAF_Adr);
    
       // und in Liste der MCAF's 
-      AddHead((APTR)&EtherDevice->ed_MCAF,(APTR)NewMCAF);
+      AddHead((APTR)&globEtherDevice->ed_MCAF,(APTR)NewMCAF);
       print(VERBOSE_DEVICE," Neue Multicastadresse :\n");
       printEthernetAddress(NewMCAF->MCAF_Adr);
-      TermIO(ios2,EtherDevice);
+      TermIO(ios2,globEtherDevice);
       
       //TODO:
    }
@@ -1768,11 +1724,11 @@ VOID DevCmdAddMulti(STDETHERARGS)
         //kein speicher mehr frei ????????
         ios2->ios2_Req.io_Error = S2ERR_SOFTWARE;
         ios2->ios2_WireError = S2WERR_GENERIC_ERROR;
-        TermIO(ios2,EtherDevice);
+        TermIO(ios2,globEtherDevice);
     }
 
    end:
-   ReleaseSemaphore((APTR)&EtherDevice->ed_MCAF_Lock);
+   ReleaseSemaphore((APTR)&globEtherDevice->ed_MCAF_Lock);
 }
 ///
 
@@ -1783,9 +1739,9 @@ VOID DevCmdRemMulti(STDETHERARGS)
    struct MCAF_Adresse * ActNode;
    int i;
 
-   ObtainSemaphore((APTR)&EtherDevice->ed_MCAF_Lock);
+   ObtainSemaphore((APTR)&globEtherDevice->ed_MCAF_Lock);
 
-   ActNode = (struct MCAF_Adresse * )GET_FIRST(EtherDevice->ed_MCAF);
+   ActNode = (struct MCAF_Adresse * )GET_FIRST(globEtherDevice->ed_MCAF);
    print(VERBOSE_DEVICE,"*DelMulticast\n");
    while(IS_VALID(ActNode))
    {
@@ -1802,7 +1758,7 @@ VOID DevCmdRemMulti(STDETHERARGS)
          Remove((APTR)ActNode);
          FreeMem(ActNode, sizeof(struct MCAF_Adresse));
          print(VERBOSE_DEVICE," MulticastAdresse wieder entfernt!\n");
-         TermIO(ios2,EtherDevice);               
+         TermIO(ios2,globEtherDevice);               
          found = TRUE;
          break;
       }
@@ -1815,7 +1771,7 @@ VOID DevCmdRemMulti(STDETHERARGS)
         print(VERBOSE_DEVICE," MulticastAdresse wurde NICHT gefunden !!!\n");
         ios2->ios2_Req.io_Error = S2ERR_BAD_ADDRESS;
         ios2->ios2_WireError = S2WERR_BAD_MULTICAST;
-        TermIO(ios2,EtherDevice);
+        TermIO(ios2,globEtherDevice);
    }
    else
    {
@@ -1823,7 +1779,7 @@ VOID DevCmdRemMulti(STDETHERARGS)
       //TODO:
    }
 
-   ReleaseSemaphore((APTR)&EtherDevice->ed_MCAF_Lock);
+   ReleaseSemaphore((APTR)&globEtherDevice->ed_MCAF_Lock);
 }
 ///
 
@@ -1868,17 +1824,8 @@ void DevCmdGetSpecialStats(STDETHERARGS)
       //Beginning with zero statistics. All entries are added one by one...
       Stat->RecordCountSupplied = 0;
 
-
       DevAddSpecialStat(Stat, statType++, "Test Statistic", 0);
-      /*DevAddSpecialStat(Stat, statType++, "NIC_Overrun", w_param ? w_param->NIC_rec_overrun : 0);
-      DevAddSpecialStat(Stat, statType++, "CmdReg0", w_param ? w_param->cmd[0] : 0);
-      DevAddSpecialStat(Stat, statType++, "CmdReg1", w_param ? w_param->cmd[1] : 0);
-      DevAddSpecialStat(Stat, statType++, "PCRelRingPtr", w_param ? w_param->rec_ptr_cur : 0);
-      DevAddSpecialStat(Stat, statType++, "AmiRelRingPtr", etherUnit ? etherUnit->last_rx_buf_ptr : 0);
-      DevAddSpecialStat(Stat, statType++, "PollInts", iPollInt);
-      DevAddSpecialStat(Stat, statType++, "eu_SigBitCnts", sigBitCntr);
-      DevAddSpecialStat(Stat, 100, "Transmit Errors", w_param ? w_param->collisions : 0); //Is requested by EtherPrefs...
-      */
+      //TODO...
    }
    else
    {
@@ -1886,12 +1833,9 @@ void DevCmdGetSpecialStats(STDETHERARGS)
       ios2->ios2_WireError    = S2WERR_NULL_POINTER;
    }
 
-
    DEBUGOUT((VERBOSE_DEVICE, "*DevCmdGetSpecialStats...end\n"));
-
-   TermIO(ios2,EtherDevice);
+   TermIO(ios2,globEtherDevice);
 }
-
 
 /*
  * New Style Device Kommando
@@ -1944,14 +1888,15 @@ VOID DevCmdNSDeviceQuery(STDETHERARGS)
     }
 
     io->io_Actual = nsdqr->SizeAvailable;
-    TermIO(ios2,EtherDevice);
+    TermIO(ios2,globEtherDevice);
 }
 
 /**
  * To calculate the remaining stacksize is not as easy as it seems. See Amiga Guru Book.
  * So we check the total stack only, not the real used stack space...
  */
-BOOL checkStackSpace(int minStackSize) {
+BOOL checkStackSpace(int minStackSize)
+{
    struct Task * thisTask = FindTask(0l);
    if (thisTask) {
       int total = thisTask->tc_SPUpper - thisTask->tc_SPLower;
@@ -1963,16 +1908,16 @@ BOOL checkStackSpace(int minStackSize) {
    return TRUE;
 }
 
-
 /*
  * Checks if the given node is already queued in the device list.
  * If so alert!
  */
-void CHECK_ALREADY_QUEUED(struct List * list, struct Node * node) {
-
+void CHECK_ALREADY_QUEUED(struct List * list, struct Node * node)
+{
 #if DEBUG > 0
    struct Node * minNode = list->lh_Head;
-   while (minNode->ln_Succ) {
+   while (minNode->ln_Succ)
+   {
       minNode = minNode->ln_Succ;
 
       //Is this node already in list? This is an software Error!
@@ -1981,5 +1926,4 @@ void CHECK_ALREADY_QUEUED(struct List * list, struct Node * node) {
       }
    }
 #endif
-
 }

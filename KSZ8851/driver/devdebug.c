@@ -13,7 +13,7 @@
 #include <proto/exec.h>
 #include <clib/debug_protos.h>
 
-int debugLevel = 0;               //0: No debug, > 0 debug level
+int debugLevel = 1000; //off: debuglevel = 0
 
 #if DEBUG > 0
 
@@ -27,7 +27,7 @@ void printdebug(short dbLevel, char * format, ...)
       Disable();
       va_list args;
       va_start(args,format);
-      vkprintf(format, args);
+      KVPrintF(format, args);
       va_end( args );
       Enable();
    }

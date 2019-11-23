@@ -32,7 +32,7 @@ typedef void (*VoidFunc )();
 
 #define printf neverUsePrintfHere
 
-inline static struct IOSana2Req * safeGetNextWriteRequest(struct EtherbridgeUnit * etherUnit);
+inline static struct IOSana2Req * safeGetNextWriteRequest(struct DeviceDriverUnit * etherUnit);
 void setErrorOnRequest(struct IOSana2Req *ios2, BYTE io_Error, ULONG ios2_WireError);
 
 
@@ -61,8 +61,8 @@ int sigBitCntr=0;
 
 ///Prototypen...
 
-BOOL CopyPacketToIOReq( struct EtherbridgeDevice *etherDevice,
-                        struct EtherbridgeUnit * etherUnit,
+BOOL CopyPacketToIOReq( struct DeviceDriver *etherDevice,
+                        struct DeviceDriverUnit * etherUnit,
                         struct IOSana2Req * ios2);
 ///
 
@@ -81,6 +81,22 @@ BOOL isBroadcastEthernetAddress(UBYTE * addr) {
    return 0 == memcmp(addr, BROADCAST_ADDRESS, sizeof(BROADCAST_ADDRESS));
 }
 
+/**
+ * Probing the hardware. Todo...
+ * @return
+ */
+bool hal_probe()
+{
+   return true;
+}
+
+void hal_initialization()
+{
+}
+
+void hal_deinitialization()
+{
+}
 
 
 /**
@@ -92,7 +108,7 @@ BOOL isBroadcastEthernetAddress(UBYTE * addr) {
  * @param etherDevice
  * @return true if something was done. False if nothing was done.
  */
-bool serviceReadPackets(struct EtherbridgeUnit *etherUnit,struct EtherbridgeDevice *etherDevice)
+bool serviceReadPackets(struct DeviceDriverUnit *etherUnit,struct DeviceDriver *etherDevice)
 {
    bool result = false;
 
@@ -268,7 +284,7 @@ void copyEthernetAddress(const BYTE * from, BYTE * to) {
  * @param etherDevice
  * @return ...
  */
-bool serviceWritePackets(struct EtherbridgeUnit *etherUnit, struct EtherbridgeDevice *etherDevice) {
+bool serviceWritePackets(struct DeviceDriverUnit *etherUnit, struct DeviceDriver *etherDevice) {
 
 #if 0
    struct IOSana2Req *ios2;
@@ -381,7 +397,7 @@ void setErrorOnRequest(struct IOSana2Req *ios2, BYTE io_Error, ULONG ios2_WireEr
  * @param etherUnit etherunit
  * @return next write packet or NULL
  */
-inline struct IOSana2Req * safeGetNextWriteRequest(struct EtherbridgeUnit * etherUnit) {
+inline struct IOSana2Req * safeGetNextWriteRequest(struct DeviceDriverUnit * etherUnit) {
    Forbid();
    struct IOSana2Req * req = (struct IOSana2Req *)GetMsg((APTR)etherUnit->eu_Tx);
    Permit();
@@ -394,8 +410,8 @@ inline struct IOSana2Req * safeGetNextWriteRequest(struct EtherbridgeUnit * ethe
  * Copy packet to given Sana 2 request. Returns true if packet was copied to the request.
  * Returns falls when not for some reason.
  */
-BOOL CopyPacketToIOReq( struct EtherbridgeDevice * etherDevice,
-                        struct EtherbridgeUnit * etherUnit,
+BOOL CopyPacketToIOReq( struct DeviceDriver * etherDevice,
+                        struct DeviceDriverUnit * etherUnit,
                         struct IOSana2Req * ios2)
 {
    BOOL bStatus=FALSE;

@@ -4,7 +4,7 @@
  * of the GNU General Public License, incorporated herein by reference.
 */
 
-// This module contains the hardware specific part of the device driver
+// This module contains the hardware specific part of the device driver (KSZ8851 Ethernet Chip)
 // ("HAL" => "hardware abstraction layer")
 
 #ifndef __HAL__H
@@ -16,20 +16,32 @@
 //The default config file of the SANA2 device
 #define DEFAULT_DEVICE_CONFIG_FILE "env:sana2/" DEVICE_NAME ".config"
 
-extern const UBYTE BROADCAST_ADDRESS[6];
+//Defines the minimal stack size in bytes that must exists when device is opened.
+#define STACK_SIZE_MINIMUM 5000
 
-#if DEBUG >0
-void printEthernetAddress(UBYTE * addr);
-#else
-   #define printEthernetAddress(addr)
-#endif
+/**
+ * Probing the hardware.
+ * @return true: hardware is ok and detected. Fals if not.
+ */
+bool hal_probe();
 
-bool connectPCService(struct EtherbridgeUnit *etherUnit, char * sPCCmd, char * sPCPktDrvCmd, char * sPCPktDrvPar);
+/**
+ * Init the hardware in any way...
+ */
+void hal_initialization();
+
+/**
+ * prepare for destroying.
+ */
+void hal_deinitialization();
+
+
+bool connectPCService(struct DeviceDriverUnit *etherUnit, char * sPCCmd, char * sPCPktDrvCmd, char * sPCPktDrvPar);
 void disconnectPCService();
 bool isEtherbridgeServiceDeleted();
 void CallPC();
-bool serviceReadPackets (struct EtherbridgeUnit *etherUnit,struct EtherbridgeDevice *etherDevice);
-bool serviceWritePackets(struct EtherbridgeUnit *etherUnit,struct EtherbridgeDevice *etherDevice) ;
+bool serviceReadPackets (struct DeviceDriverUnit *etherUnit,struct DeviceDriver *etherDevice);
+bool serviceWritePackets(struct DeviceDriverUnit *etherUnit,struct DeviceDriver *etherDevice) ;
 char getNextFreeTransmitBufferIndexWait();
 LONG milliSecondsToTicks(ULONG milliSeconds);
 void SetIrqAndIOBase(int IOBase, unsigned char Irq);

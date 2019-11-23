@@ -36,12 +36,13 @@
 
 #include "copybuffs.h"
 
+//Number of device units supported
 #define ED_MAXUNITS 1
+
+//Prio of the device unit task
 #define ETHER_PRI 0
 
-extern short kbdDelayTicks;  // Keyboard delay when sending scan codes to PC
-
-enum BridgeboardType { None = 0, A2088OrA2286, A2386 };
+extern const UBYTE BROADCAST_ADDRESS[6];
 
 struct SuperS2PTStats
 {
@@ -54,7 +55,7 @@ struct SuperS2PTStats
 /*
 ** Unit Data Structure
 */
-struct EtherbridgeUnit
+struct DeviceDriverUnit
 {
     struct Unit            eu_Unit;          /* AmigaOS Standard Unit Structure */
     UBYTE                  eu_UnitNum;       /* Unit number */
@@ -82,8 +83,7 @@ struct EtherbridgeUnit
 
     struct Sana2DeviceStats eu_Stats;        /* Global device statistics */
     struct SuperS2PTStats* eu_IPTrack;       /* For tracking IP packets */
-    ULONG                  last_rx_buf_ptr;  /* letzte Kopie des Zeigers aus dem JanMem */
-    ULONG                  eu_Sigbit;        /* Signalbit fuer JanusIntHandler oder VBeam Poll Handler. */
+    ULONG                  eu_Sigbit;        /* Signalbit for interrupt handler */
 };
 
 
@@ -94,29 +94,27 @@ struct EtherbridgeUnit
 struct StartupMessage
 {
    struct Message Msg;
-   struct Unit *Unit;
+   struct Unit    *Unit;
    struct Device  *Device;
 };
 
 
 /*
-** Device Data Structure itself
+** Device Data Structure itself. Holds all official and private stuff of this SANA2 device.
 */
-struct EtherbridgeDevice
+struct DeviceDriver
 {
    struct Library          ed_Device;              // Needed Device structure
+
    BPTR                    ed_SegList;             // Segment list when open device. Used when unload device.
-   struct EtherbridgeUnit *ed_Units[ED_MAXUNITS];  // Only "one" unit at this time
+   struct DeviceDriverUnit *ed_Units[ED_MAXUNITS];  // Only "one" unit at this time
    struct StartupMessage   ed_Startup;
    struct Hook             ed_DummyPFHook;         // Default Dummy Hook (inkl. Asm-Funktion)
    struct MinList          ed_MCAF;                // Liste der benutzten Multicastadressen
    struct SignalSemaphore  ed_MCAF_Lock;           // Semaphore fuer MCAF-Liste
    struct SignalSemaphore  ed_DeviceLock;          // General List Lock. Used only when open or close device
-   enum BridgeboardType    ed_BBType;              // Type of used Bridgeboard
 
-   BOOL                    ed_showMessages;      // allowed to display user messages when an error occurred.
-   BOOL                    ed_startDosServer;      // Start DOS Server automatically?
-   BOOL                    ed_startPacketDriver;   // Start DOS packet driver automatically
+   BOOL                    ed_showMessages;        // Showing messages allowed ?
 };
 
 /**
@@ -145,29 +143,20 @@ struct MCAF_Adresse
 //############ MACROS #################################
  
 
-#define STDETHERARGS struct IOSana2Req *ios2,struct EtherbridgeUnit *etherUnit, struct EtherbridgeDevice *etherDevice
-
-
 #define GET_FIRST(a) ((APTR)(((struct MinList)(a)).mlh_Head))
 #define GET_NEXT(a) ((APTR)(((struct MinNode *)a)->mln_Succ))
 #define IS_VALID(a) (((struct MinNode *)a)->mln_Succ)
 
+#define STDETHERARGS struct IOSana2Req *ios2,struct DeviceDriverUnit *etherUnit, struct DeviceDriver *etherDevice
+
 
 //############# prototypes ###################
 
-//Device Interface (public)
-//struct Library * DevInit(BPTR DeviceSegList, struct Library * DevBasePointer, struct Library * execBase);
-//VOID  DevOpen (struct IOSana2Req *ios2, ULONG s2unit, ULONG s2flags, struct Library * devPointer);
-//BPTR  DevClose(struct IOSana2Req *ios2, struct Library * Devbase);
-//BPTR  DevExpunge(struct Library * DevBase);
-VOID  DevBeginIO(struct IOSana2Req *,struct Library * DevBase);
-ULONG DevAbortIO( struct IOSana2Req *,struct Library * DevBase);
-
 //internal private functions
-void  PerformIO(struct IOSana2Req *,struct EtherbridgeDevice * DevBase);
-void  TermIO(struct IOSana2Req * ,struct EtherbridgeDevice * DevBase);
-VOID  ExpungeUnit(UBYTE unitNumber, struct EtherbridgeDevice *etherDevice);
-struct EtherbridgeUnit *InitETHERUnit(ULONG,struct EtherbridgeDevice * ETHERDevice);
+void  PerformIO(struct IOSana2Req *,struct DeviceDriver * DevBase);
+void  TermIO(struct IOSana2Req * ,struct DeviceDriver * DevBase);
+VOID  ExpungeUnit(UBYTE unitNumber, struct DeviceDriver *etherDevice);
+struct DeviceDriverUnit *InitUnitProcess(ULONG,struct DeviceDriver * ETHERDevice);
 VOID DevCmdTrackType(STDETHERARGS);
 VOID DevCmdUnTrackType(STDETHERARGS);
 VOID DevCmdConfigInterface(STDETHERARGS);
@@ -187,16 +176,7 @@ VOID DevCmdGetSpecialStats(STDETHERARGS);
 VOID DevCmdNSDeviceQuery(STDETHERARGS);
 VOID DevCmdBurstOut(STDETHERARGS);
 
-VOID DoEvent(ULONG events,struct EtherbridgeUnit *etherUnit,struct EtherbridgeDevice *etherDevice);
-bool serviceReadPackets(struct EtherbridgeUnit *etherUnit,struct EtherbridgeDevice *etherDevice);
-VOID getmcaf(struct EtherbridgeDevice *etherDevice, ULONG * af);
-VOID OpenBusyWIn(char*);
-VOID CloseBusyWin();
-void ShowMessage(char * cText, void * ArgList);
-void DevProcEntry();
-
-BOOL checkStackSpace();
-
-
+VOID DoEvent(ULONG events,struct DeviceDriverUnit *etherUnit,struct DeviceDriver *etherDevice);
+bool serviceReadPackets(struct DeviceDriverUnit *etherUnit,struct DeviceDriver *etherDevice);
 
 #endif

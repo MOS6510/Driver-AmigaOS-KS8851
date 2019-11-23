@@ -19,23 +19,30 @@ CFLAGS								+= -O2 \
 										-fstrength-reduce \
 										$(INC_SRCH_PATH) \
 										-fno-builtin-printf \
-										-g \
+										-fomit-frame-pointer \
                               -noixemul \
                               -Wall \
-                              -fomit-frame-pointer \
                               -m68$(ARCH) \
                               -msoft-float 
                               
 #If not given via command line, build for "68000"
 ifeq ($(ARCH),)
 	ARCH=000
-endif	
+endif			
                           
 export CCPATH CC LD CXX CFLAGS LDFLAGS RANLIB LD AOS_INCLUDES OS_INCLUDES CFLAGS ARCH PROJ_ROOT XDFTOOL
 
 all:
 	@$(MAKE) -C KSZ8851/servicetool
 	@$(MAKE) -C KSZ8851/driver
+	
+debug:	CFLAGS += -DDEBUG -g
+debug:
+	@$(MAKE) -C KSZ8851/servicetool 
+	@$(MAKE) -C KSZ8851/driver
+	@$(MAKE) -C KSZ8851/driver devinit.s device.s
+	
+# 	CFLAGS = -DDEBUG -g
 
 .PHONY: clean
 
