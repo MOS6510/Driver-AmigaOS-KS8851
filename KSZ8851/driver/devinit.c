@@ -1,14 +1,16 @@
 /*
- * Copyright (C) 1997 - 1999, 2018 by Heiko Pruessing
+ * Copyright (C) 2019 by Heiko Pruessing
  * This software may be used and distributed according to the terms
  * of the GNU General Public License, incorporated herein by reference.
 */
 
-// Etherbridge "device" startup code.
+// This module contains the device startup code.
 
-// ------------------- INCLUDE ------------------------
+// ------------------- INCLUDES ------------------------
 
-// define as unresolved external references (proto/xxx.h) and compiler will link to auto(matically) open library
+// define as unresolved external references (proto/xxx.h) and compiler will
+// link to auto(matically) open library
+
 #include <proto/exec.h>
 #include <proto/utility.h>
 #include <exec/types.h>
@@ -19,7 +21,6 @@
 #include "helper.h"
 #include "device.h"
 #include "version.h"
-
 
 // ------------------- Prototypes ------------------------
 
@@ -69,9 +70,8 @@ const APTR InitTab[4] =
   (APTR)&_DevInit
 };
 
-      
 /**
- * Init Device.
+ * AmigaOS entry point "Init Device".
  *
  * @param REG(a0,BPTR SegListPointer)
  * @param REG(d0,struct Library * dev)
@@ -97,7 +97,7 @@ struct Library * _DevInit(REG(a0,BPTR SegListPointer),
 }
 
 /**
- * Open Device.
+ * AmigaOS entry point "Open Device".
  *
  * @param REG(d0, ULONG unit)
  * @param REG(a1, APTR iorq)
@@ -114,7 +114,7 @@ VOID _DevOpen(REG(d0, ULONG unit),
 }
 
 /**
- * Close Device.
+ * AmigaOS entry point "Close Device".
  *
  * @param REG(a1,APTR iorq)
  * @param REG(a6,struct Library * DevBase)
@@ -127,7 +127,7 @@ BPTR _DevClose(REG(a1,APTR iorq),REG(a6,struct Library * DevBase))
 }
 
 /**
- * Expunge device.
+ * AmigaOS entry point "Expunge device".
  *
  * @param REG(a6,struct Library * DevBase)
  * @return
@@ -148,7 +148,7 @@ BPTR _DevExpunge(REG(a6,struct Library * DevBase))
 }
 
 /**
- * BeginIO.
+ * AmigaOS entry point "BeginIO".
  *
  * @param REG(a1,struct IOSana2Req *ios2)
  * @param REG(a6,struct Library * dev)
@@ -166,7 +166,7 @@ asm ( ".globl __DevBeginIO \n"
       "  rts");
 
 /**
- * AbortIO.
+ * AmigaOS entry point "AbortIO".
  *
  * @param REG(a1,struct IOSana2Req *ios2)
  * @param REG(a6,struct Library * dev)
@@ -186,7 +186,7 @@ asm ( ".globl __DevAbortIO \n"
 
 /**
  * Needed as dummy function for device function table.
- * WARNING: This fuction MUST exists!
+ * WARNING: This function MUST exists!
  * @return null
  */
 SAVEDS

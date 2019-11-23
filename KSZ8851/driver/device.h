@@ -1,8 +1,10 @@
 /* 
- * Copyright (C) 1997 - 1999, 2018 by Heiko Pruessing
+ * Copyright (C) 2019 by Heiko Pruessing
  * This software may be used and distributed according to the terms
  * of the GNU General Public License, incorporated herein by reference.
 */
+
+// This module contains the AmigaOS part of the device driver.
 
 #ifndef DEVICE_H
 #define DEVICE_H
@@ -29,40 +31,26 @@
 #include <devices/serial.h>
 #include <utility/hooks.h>
 
-
 #include <string.h>
+#include <stdbool.h>
+
+#include "copybuffs.h"
 
 #define ED_MAXUNITS 1
 #define ETHER_PRI 0
 
-#define EB_DEVICEBURSTOUT 0x2000
-
-//Maximale Anzahl der Durchläufe des Device Task nach einem Janus Signal
-#define TASKLOOPMAX 30
-
-
 extern short kbdDelayTicks;  // Keyboard delay when sending scan codes to PC
 
-
-
-
-#define bool char
-#define TRUE  1
-#define true  1
-#define FALSE 0
-#define false 0
-
 enum BridgeboardType { None = 0, A2088OrA2286, A2386 };
-
-
 
 /*
 ** Typedef's for the SANA-II callback functions.
 */
+/*
 typedef BOOL  (*SANA2_CFB)(APTR to, APTR from, LONG length);
 typedef BOOL  (*SANA2_CTB)(APTR to, APTR from, LONG length);
 typedef ULONG (*HOOK_FUNC)(struct Hook *hook,struct IOSana2Req * io,APTR message);
-
+*/
 
 struct SuperS2PTStats
 {

@@ -1,11 +1,11 @@
 /* 
- * Copyright (C) 1997 - 1999 by Heiko Pruessing
+ * Copyright (C) 2019 by Heiko Pruessing
  * This software may be used and distributed according to the terms
  * of the GNU General Public License, incorporated herein by reference.
 */
 
 //Auto open libraries...
-#include "../driver/conffile.h"
+#include "configfile.h"
 
 #include <proto/dos.h>
 #include <proto/exec.h>

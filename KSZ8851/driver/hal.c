@@ -1,10 +1,10 @@
 /* 
- * Copyright (C) 1997 - 2004 by Heiko Pruessing
+ * Copyright (C) 2019 by Heiko Pruessing
  * This software may be used and distributed according to the terms
  * of the GNU General Public License, incorporated herein by reference.
 */
 
-#include "../driver/jan_int.h"
+// This module contains the HAL (hardware part of the device driver)
 
 #include <exec/interrupts.h>
 #include <exec/tasks.h>
@@ -15,29 +15,20 @@
 #include <hardware/intbits.h>
 #include <dos/exall.h>
 #include <stabs.h>
- 
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/graphics.h>
-
 #include <time.h>
 
-
 #include "devdebug.h"
+#include "hal.h"
 #include "tools.h"
-
 #include "version.h"
 
 
 //########### PROTOTYPES #####################
 
 typedef void (*VoidFunc )();
-
-//WARNING!: There was a huge bug!
-//The lines "ALIAS(bcopy,memcpy);" would expect that bcopy() and memcpy() are the same, but the copy direction is in inverse order!
-//Because GCC uses bcopy for many things internally (static assignments of initializers) you get strange behavior at runtime!
-//Don't use that! bcopy() seems to be implemented somewhere right!
-//Old Code: ALIAS(bcopy,memcpy);
 
 #define printf neverUsePrintfHere
 

@@ -15,11 +15,13 @@ DEVICE_NAME   = ksz8851.device
 BUILDDIR=build/build-$(ARCH)
                             
 SRC = $(wildcard *.c)
+HDR = $(wildcard *.h)
 OBJS = $(patsubst %.c, $(BUILDDIR)/%.o, $(SRC))                            
                                                             
 LDOPTS += -noixemul -nostartfiles -lnix -lamiga -ldebug -lstubs
 LDOPTS += -Wl,-Map,$@.map -Wl,--cref 
 CFLAGS += -Wno-pointer-sign
+CFLAGS += -DDEVICE_NAME=\"$(DEVICE_NAME)\"
 #LDOPTS += --verbose
 
 .PHONY: all distribution
@@ -37,21 +39,22 @@ distribution:
 	@make clean device ARCH=060
 	@./build-installation.sh
 	
-device: $(BUILDDIR)/$(DEVICE_NAME)
+device: $(BUILDDIR)/$(DEVICE_NAME) 
 
 $(BUILDDIR)/$(DEVICE_NAME):	$(OBJS)
 		@echo "Linking       " $@
-		@$(LD) $^ -o $@.$(ARCH) $(LDOPTS) 
+		@$(LD) $^ -o $@.$(ARCH) $(LDOPTS)
+		@strings $@.$(ARCH) | grep '$$VER'
 		ls -la $@.$(ARCH)
 		
 clean:
 		@rm -r -f -d *.o *.s *.aobj *.device *.map mapfile $(BUILDDIR)/*.o $(BUILDDIR)/*.device
 		@rm -fr $(BUILDDIR)
 
-$(BUILDDIR)/%.o:%.c
+$(BUILDDIR)/%.o:%.c $(HDR)
 	@echo "Compiling C   " $< " (68"$(ARCH)")"
 	@$(CC) -c $(CFLAGS) -o $@ $< 
 
 .c.s:
-	$(CC) -S -nostdinc $(CFLAGS) -o $@ $< 
+	@$(CC) -S -nostdinc $(CFLAGS) -o $@ $< 
 	

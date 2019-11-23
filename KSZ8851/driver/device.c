@@ -1,8 +1,12 @@
 /* 
- * Copyright (C) 1997 - 1999, 2018 by Heiko Pruessing
+ * Copyright (C) 2019 by Heiko Pruessing
  * This software may be used and distributed according to the terms
  * of the GNU General Public License, incorporated herein by reference.
 */
+
+// This module contains the AmigaOS part of the device driver.
+
+// ############################## INCLUDES ####################################
 
 #include <proto/exec.h>
 #include <proto/dos.h>
@@ -47,27 +51,26 @@
 
 #include <string.h>
 
-#include "conffile.h"
 #include "devdebug.h"
-#include "jan_int.h"
 #include "tools.h"
 #include "version.h"  
 #include "device.h"
+
+#include "configfile.h"
+#include "hal.h"
 #include "helper.h"
+#include "copybuffs.h"
+
 
 BPTR DevExpunge(struct Library * DevBase);
 
-
-// ############## LOCAL FUNCTION ##################
+// ############################## LOCAL FUNCTION ##############################
 
 static ULONG AbortReqAndRemove(struct MinList *, struct IOSana2Req *,struct EtherbridgeDevice *,struct SignalSemaphore * lock);
 static void  AbortReqList(struct MinList *minlist,struct EtherbridgeDevice * EtherDevice);
 static BOOL  ReadConfig(struct EtherbridgeDevice *);
 
-
-
-//############ Konstanten ######################################################
-///Konstanten
+//############################### CONST #######################################
 
 // State bits for edu_State
 #define ETHERUB_CONFIG     0
@@ -86,27 +89,13 @@ static BOOL  ReadConfig(struct EtherbridgeDevice *);
 #define ETHERUF_NOBRIDGEBOARD (1<<ETHERUB_NOBRIDGEBOARD)
 
 
-
-#define IS_WHITESPACE(x) (((x) == ' ') || ((x) == '='))
-#define IS_STRINGTERM(x) (((x) == 0) || ((x) == 0xa) || ((x) == '\n'))
-
-
-
-/******************************************************************************/
-/*                                                                            */
-/* exports (from Libnix)                                                      */
-/*                                                                            */
-/******************************************************************************/
-
 //This is for defining the API version to the PC side.
 const UWORD DevVersion  = (UWORD)DEVICE_VERSION;
 const UWORD DevRevision = (UWORD)DEVICE_REVISION;
 
 const char DevName[]     = DEVICE_NAME;
 const char DevIdString[] = VERSION_STRING;
-
-const char sConfigFile[] = "env:sana2/etherbridge.config";
-
+const char sConfigFile[] = DEFAULT_DEVICE_CONFIG_FILE;
 
 
 //############ Globale Variablen ###############################################
@@ -1928,7 +1917,6 @@ static UWORD auwSupportCmds[]={CMD_READ,
                                S2_READORPHAN,
                                S2_ONLINE,
                                S2_OFFLINE,
-                               EB_DEVICEBURSTOUT,
                                NSCMD_DEVICEQUERY,
                                0};
 

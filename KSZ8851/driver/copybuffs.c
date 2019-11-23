@@ -1,3 +1,12 @@
+/*
+ * Copyright (C) 2019 by Heiko Pruessing
+ * This software may be used and distributed according to the terms
+ * of the GNU General Public License, incorporated herein by reference.
+*/
+
+// This module defines the assembler stub functions of the SANA2 buffer management.
+
+
 #include <exec/interrupts.h>
 #include <exec/tasks.h>
 #include <exec/devices.h>
@@ -18,7 +27,15 @@
 #include "helper.h"
 
 
-/// Used for both: CopyToBuf and CopyFromBuf calls
+/**
+ * Main copy buffer management function. Used for both: CopyToBuf and CopyFromBuf calls
+ *
+ * @param funcPtr
+ * @param to
+ * @param from
+ * @param len
+ * @return
+ */
 SAVEDS
 ULONG CopyBuf(APTR funcPtr, ULONG to, ULONG from, ULONG len) {
    register ULONG _res __asm("d0");
@@ -40,6 +57,14 @@ ULONG CopyBuf(APTR funcPtr, ULONG to, ULONG from, ULONG len) {
    return _res;
 }
 
+/**
+ * SANA2 filter function callback sub entry.
+ *
+ * @param hook
+ * @param ioreq
+ * @param rawPktData
+ * @return
+ */
 SAVEDS
 ULONG CallFilterHook(struct Hook * hook, struct IOSana2Req * ioreq, APTR rawPktData) {
    register ULONG _res __asm("d0");
