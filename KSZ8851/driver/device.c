@@ -64,11 +64,13 @@
 
 BPTR DevExpunge(struct Library * DevBase);
 
-// ############################## LOCAL FUNCTION ##############################
+// ############################## LOCALS  #####################################
 
 static ULONG AbortReqAndRemove(struct MinList *, struct IOSana2Req *,struct EtherbridgeDevice *,struct SignalSemaphore * lock);
 static void  AbortReqList(struct MinList *minlist,struct EtherbridgeDevice * EtherDevice);
 static BOOL  ReadConfig(struct EtherbridgeDevice *);
+
+const char * DEVICE_TASK_NAME = DEVICE_NAME " Unit Task";
 
 //############################### CONST #######################################
 
@@ -100,7 +102,6 @@ const char sConfigFile[] = DEFAULT_DEVICE_CONFIG_FILE;
 
 //############ Globale Variablen ###############################################
 
-///globale Variablen
 struct bridge_ether * b_param = NULL;
 struct bridge_ether * w_param = NULL;
 struct Sana2DeviceStats GlobStat;
@@ -115,14 +116,12 @@ int    iComMode=0;                   //Kommunikationsmodus zwischen PC und Amiga
                                      // 1 : fuer VBeam-Handler
 
 struct ExecBase * SysBase  = NULL;
-///
 
 //############ Externe Variablen und Funktionen ################################
 
 extern int sigBitCntr;
 
 
-//TODO: Check if "__saveds" is correct here: Loads A4 near register
 SAVEDS
 ULONG FakePFHookEntry()
 {
@@ -728,7 +727,7 @@ struct EtherbridgeUnit *InitETHERUnit(ULONG s2unit, struct EtherbridgeDevice *Et
 {
     struct EtherbridgeUnit *etherUnit;
     struct TagItem NPTags[]={{NP_Entry, (ULONG)&DevProcEntry},
-                             {NP_Name , (ULONG)"Etherbridge Unit Process"},
+                             {NP_Name , (ULONG) DEVICE_TASK_NAME },
                              {NP_Priority, ETHER_PRI} ,
                              {NP_FreeSeglist , FALSE} ,
                              {NP_StackSize, 8000},
@@ -1142,6 +1141,7 @@ VOID PerformIO(struct IOSana2Req *ios2,
         case CMD_FLUSH:                DevCmdFlush(ios2,etherUnit,EtherDevice);
                                        break;
 
+                                       //TODO: Add support:
 /*        case S2_ADDMULTICASTADDRESS:   DevCmdAddMulti(ios2,etherUnit,EtherDevice);
                                        break;
 

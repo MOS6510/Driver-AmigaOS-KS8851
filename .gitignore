@@ -1,3 +1,5 @@
 KSZ8851/servicetool/build/build-000/*
 *.o
 build/
+**/.DS_Store
+**/*.adf

@@ -23,13 +23,17 @@
 							<builder buildPath="${workspace_loc:/Amiga1200Plus}" id="cdt.managedbuild.builder.gnu.cross.510182346" keepEnvironmentInBuildfile="false" managedBuildOn="false" name="Gnu Make Builder" superClass="cdt.managedbuild.builder.gnu.cross"/>
 							<tool id="cdt.managedbuild.tool.gnu.cross.c.compiler.624555481" name="Cross GCC Compiler" superClass="cdt.managedbuild.tool.gnu.cross.c.compiler">
 								<option id="gnu.c.compiler.option.include.paths.678670448" name="Include paths (-I)" superClass="gnu.c.compiler.option.include.paths" useByScannerDiscovery="false" valueType="includePath">
-									<listOptionValue builtIn="false" value="/usr/local/cross-tools/m68k-amigaos/include"/>
+									<listOptionValue builtIn="false" value="/opt/amiga/m68k-amigaos/clib2/include"/>
+									<listOptionValue builtIn="false" value="/opt/amiga/m68k-amigaos/ndk-include"/>
 								</option>
 								<option id="gnu.c.compiler.option.preprocessor.def.symbols.252271210" name="Defined symbols (-D)" superClass="gnu.c.compiler.option.preprocessor.def.symbols" useByScannerDiscovery="false" valueType="definedSymbols">
 									<listOptionValue builtIn="false" value="BOOL=u8"/>
 									<listOptionValue builtIn="false" value="ULONG=u32"/>
 									<listOptionValue builtIn="false" value="bool=u8"/>
 									<listOptionValue builtIn="false" value="__saveds"/>
+									<listOptionValue builtIn="false" value="&quot;DEVICE_NAME=&quot;SANA 2 Device Name&quot;"/>
+									<listOptionValue builtIn="false" value="true=1"/>
+									<listOptionValue builtIn="false" value="false=0"/>
 								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.c.compiler.input.1730044590" superClass="cdt.managedbuild.tool.gnu.c.compiler.input"/>
 							</tool>

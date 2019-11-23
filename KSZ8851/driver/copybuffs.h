@@ -19,6 +19,10 @@ typedef BOOL  (*SANA2_CFB)(APTR to, APTR from, LONG length);
 typedef BOOL  (*SANA2_CTB)(APTR to, APTR from, LONG length);
 typedef ULONG (*HOOK_FUNC)(struct Hook *hook,struct IOSana2Req * io,APTR message);
 
+#define CopyFromBuffer(to,from,len)      CopyBuf(bm->bm_CopyFromBuffer  ,to,from,len)
+#define CopyToBuffer(to,from,len)        CopyBuf(bm->bm_CopyToBuffer    ,to,from,len)
+
+
 /**
  * Main Copy Buffer function.
  * @param funcPtr

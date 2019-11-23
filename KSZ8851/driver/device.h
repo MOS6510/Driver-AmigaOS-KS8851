@@ -43,15 +43,6 @@ extern short kbdDelayTicks;  // Keyboard delay when sending scan codes to PC
 
 enum BridgeboardType { None = 0, A2088OrA2286, A2386 };
 
-/*
-** Typedef's for the SANA-II callback functions.
-*/
-/*
-typedef BOOL  (*SANA2_CFB)(APTR to, APTR from, LONG length);
-typedef BOOL  (*SANA2_CTB)(APTR to, APTR from, LONG length);
-typedef ULONG (*HOOK_FUNC)(struct Hook *hook,struct IOSana2Req * io,APTR message);
-*/
-
 struct SuperS2PTStats
 {
     struct MinNode               ss_Node;
@@ -153,8 +144,6 @@ struct MCAF_Adresse
 
 //############ MACROS #################################
  
-#define CopyFromBuffer(to,from,len)      CopyBuf(bm->bm_CopyFromBuffer  ,to,from,len)
-#define CopyToBuffer(to,from,len)        CopyBuf(bm->bm_CopyToBuffer    ,to,from,len)
 
 #define STDETHERARGS struct IOSana2Req *ios2,struct EtherbridgeUnit *etherUnit, struct EtherbridgeDevice *etherDevice
 
