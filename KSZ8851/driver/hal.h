@@ -36,14 +36,10 @@ void hal_initialization(void);
 void hal_deinitialization(void);
 
 
-bool connectPCService(struct DeviceDriverUnit *etherUnit, char * sPCCmd, char * sPCPktDrvCmd, char * sPCPktDrvPar);
-bool serviceReadPackets (struct DeviceDriverUnit *etherUnit,struct DeviceDriver *etherDevice);
-bool serviceWritePackets(struct DeviceDriverUnit *etherUnit,struct DeviceDriver *etherDevice) ;
-LONG milliSecondsToTicks(ULONG milliSeconds);
-void SetIrqAndIOBase(int IOBase, unsigned char Irq);
-void SetPromMode(BOOL);
-unsigned int waitForCmdExecuted(UBYTE Port,int MaxMilliTime);
-void copyEthernetAddress(const BYTE * from, BYTE * to);
+bool hal_serviceReadPackets (struct DeviceDriverUnit *etherUnit,struct DeviceDriver *etherDevice);
+
+bool hal_serviceWritePackets(struct DeviceDriverUnit *etherUnit,struct DeviceDriver *etherDevice);
+
 ULONG CallFilterHook(struct Hook * hook, struct IOSana2Req * ioreq, APTR rawPktData);
 
 #endif

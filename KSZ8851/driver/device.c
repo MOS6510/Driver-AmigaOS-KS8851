@@ -61,7 +61,9 @@
 #include "helper.h"
 #include "copybuffs.h"
 
+// ############################## GLOBALS #####################################
 
+const UBYTE BROADCAST_ADDRESS[6] = {0xff,0xff,0xff,0xff,0xff,0xff};
 
 // ############################## LOCALS  #####################################
 
@@ -109,6 +111,30 @@ struct Sana2DeviceStats GlobStat;
 extern void __initlibraries(void);
 extern void __exitlibraries(void);
 extern long __oslibversion;
+
+// --------------------- INTERNAL PROTOTYPES -----------------------------
+
+void  PerformIO(struct IOSana2Req *,struct DeviceDriver * DevBase);
+void  TermIO(struct IOSana2Req * ,struct DeviceDriver * DevBase);
+VOID  ExpungeUnit(UBYTE unitNumber, struct DeviceDriver *etherDevice);
+struct DeviceDriverUnit *InitUnitProcess(ULONG,struct DeviceDriver * ETHERDevice);
+VOID DevCmdTrackType(STDETHERARGS);
+VOID DevCmdUnTrackType(STDETHERARGS);
+VOID DevCmdConfigInterface(STDETHERARGS);
+VOID DevCmdReadPacket(STDETHERARGS);
+VOID DevCmdReadOrphan(STDETHERARGS);
+VOID DevCmdGetStationAddress(STDETHERARGS);
+VOID DevCmdOffline(STDETHERARGS);
+VOID DevCmdOnline(STDETHERARGS);
+VOID DevCmdDeviceQuery(STDETHERARGS);
+VOID DevCmdWritePacket(STDETHERARGS);
+VOID DevCmdFlush(STDETHERARGS);
+VOID DevCmdOnEvent(STDETHERARGS);
+VOID DevCmdGlobStats(STDETHERARGS);
+VOID DevCmdAddMulti(STDETHERARGS);
+VOID DevCmdRemMulti(STDETHERARGS);
+VOID DevCmdGetSpecialStats(STDETHERARGS);
+VOID DevCmdNSDeviceQuery(STDETHERARGS);
 
 //############ Externe Variablen und Funktionen ################################
 
@@ -187,33 +213,13 @@ void DeviceOpen(struct IOSana2Req *ios2,
    struct BufferManagement *bm;
    BOOL success = FALSE; 
 
+   /*
    DEBUGOUT((VERBOSE_DEVICE, "Parameter Test: '1' == %ld (16 bit)\n", (uint16_t) 1));
    DEBUGOUT((VERBOSE_DEVICE, "Parameter Test: '2' == %ld (32 bit)\n", (uint32_t) 2));
    DEBUGOUT((VERBOSE_DEVICE, "Parameter Test: '0x5678'     == 0x%lx (16 bit)\n", (uint32_t) 0x5678));
-   DEBUGOUT((VERBOSE_DEVICE, "Parameter Test: '0x12345678' == 0x%lx (32 bit)\n", (uint32_t) 0x12345678));
+   DEBUGOUT((VERBOSE_DEVICE, "Parameter Test: '0x12345678' == 0x%lx (32 bit)\n", (uint32_t) 0x12345678));*/
 
    DEBUGOUT((VERBOSE_DEVICE, "DevOpen(ioreq=0x%lx, unit=%ld, flags=0x%lx, devPointer=0x%lx)...\n", ios2, s2unit, s2flags, devPointer));
-
-   if (s2unit != 0)
-   {
-      DEBUGOUT((VERBOSE_DEVICE, "Unit %ld is not supported!!!!\n", s2unit));
-      return;
-   }
-
-
-   //Only when device is opened check that the stack is at leased 5000 bytes in size.
-   //If not device would crash for some reason somewhere because of that.
-   //Bring up waring. Exit with failure.
-   if (!checkStackSpace(STACK_SIZE_MINIMUM))
-   {
-      DEBUGOUT((VERBOSE_DEVICE, "Stack too small!!!!\n"));
-
-      //__request("Stack size is too small! Please increase the size to at least 5kb...");
-      ios2->ios2_Req.io_Error = IOERR_OPENFAIL;
-      ios2->ios2_Req.io_Unit = (struct Unit *) -1;
-      ios2->ios2_Req.io_Device = (struct Device *) -1;
-      return;
-   }
 
    CHECK_LIBRARY_IS_OPEN(UtilityBase);
 
@@ -221,34 +227,42 @@ void DeviceOpen(struct IOSana2Req *ios2,
 
    globEtherDevice->ed_Device.lib_OpenCnt++;
 
-   //Test and check hardware
-   if (hal_probe())
+   //Only when device is opened check that the stack is at leased 5000 bytes in size.
+   //If not device would crash for some reason somewhere because of that.
+   //Bring up waring. Exit with failure.
+   if (!checkStackSpace(STACK_SIZE_MINIMUM))
    {
-      //jetzt exklusiven Zugriff ?
-      if (s2flags & SANA2OPF_MINE)
-      {
-         //schon von jemanden anderen geoeffnet ?
-         if (!(globEtherDevice->ed_Device.lib_OpenCnt > 1))
-            globEtherDevice->ed_Device.lib_Flags |= ETHERUF_EXCLUSIVE;
-         else
-            goto end;
-      }
+      DEBUGOUT((VERBOSE_DEVICE, "Stack too small!!!!\n"));
+      goto end;
+   }
 
-      //open in promisc mode ? (only in conjunction with flag MINE!!!)
-      if (s2flags & SANA2OPF_PROM)
+   //At this time unit "0" is only supported.
+   if(s2unit < ED_MAXUNITS)
+   {
+      //Test and check hardware
+      if (hal_probe())
       {
+         //jetzt exklusiven Zugriff ?
          if (s2flags & SANA2OPF_MINE)
-            globEtherDevice->ed_Device.lib_Flags |= ETHERUF_PROMISC;
-         else
-            goto end;
-      }
+         {
+            //schon von jemanden anderen geoeffnet ?
+            if (!(globEtherDevice->ed_Device.lib_OpenCnt > 1))
+               globEtherDevice->ed_Device.lib_Flags |= ETHERUF_EXCLUSIVE;
+            else
+               goto end;
+         }
 
-      /* Only "UNIT 0" is supported to open */
-      if(s2unit < ED_MAXUNITS)
-      {
+         //open in promisc mode ? (only in conjunction with flag MINE!!!)
+         if (s2flags & SANA2OPF_PROM)
+         {
+            if (s2flags & SANA2OPF_MINE)
+               globEtherDevice->ed_Device.lib_Flags |= ETHERUF_PROMISC;
+            else
+               goto end;
+         }
+
          //Bring up unit device process...
          etherUnit = InitUnitProcess(s2unit,globEtherDevice);
-
          if( etherUnit )
          {
             //PromMode setzen/löschen wenn Device schon online
@@ -325,7 +339,7 @@ void DeviceOpen(struct IOSana2Req *ios2,
                   //TODO: Add SANA2R3 Hook extensions functions...
 
                   //print out all tags:
-                  #if DEBUG > 0
+#if DEBUG > 0
                   DEBUGOUT((5, "All buffer management tags: "));
                   struct TagItem *tstate;
                   struct TagItem *tag;
@@ -335,7 +349,7 @@ void DeviceOpen(struct IOSana2Req *ios2,
                      DEBUGOUT((5, " 0x%lx", (ULONG)tag->ti_Tag));
                   }
                   DEBUGOUT((5, "\n"));
-                  #endif
+#endif
                }
 
                /*
@@ -367,7 +381,8 @@ void DeviceOpen(struct IOSana2Req *ios2,
 
    end:
 
-   if (!success) {
+   if (!success)
+   {
       ios2->ios2_Req.io_Error = IOERR_OPENFAIL;
       ios2->ios2_Req.io_Unit = (struct Unit *) -1;
       ios2->ios2_Req.io_Device = (struct Device *) -1;
@@ -831,7 +846,7 @@ struct DeviceDriverUnit *InitUnitProcess(ULONG s2unit, struct DeviceDriver *Ethe
  */
 static BOOL ReadConfig( struct DeviceDriver *etherDevice )
 {
-    DEBUGOUT((VERBOSE_DEVICE, "ReadConfig()\n"));
+    DEBUGOUT((VERBOSE_DEVICE, "ReadConfigFile: %s\n", DEFAULT_DEVICE_CONFIG_FILE));
 
     RegistryInit( sConfigFile );
     {
@@ -976,7 +991,7 @@ SAVEDS void DevProcEntry(void)
          
             //Packet reads or writes ?
             while((etherUnit->eu_State & ETHERUF_ONLINE) &&
-                  (serviceWritePackets(etherUnit, globEtherDevice) || serviceReadPackets(etherUnit, globEtherDevice)))
+                  (hal_serviceWritePackets(etherUnit, globEtherDevice) || hal_serviceReadPackets(etherUnit, globEtherDevice)))
             {
                //Nothing. Repeat until nothing can be done.
             };
@@ -1932,3 +1947,54 @@ void CHECK_ALREADY_QUEUED(struct List * list, struct Node * node)
    }
 #endif
 }
+
+void printEthernetAddress(UBYTE * addr)
+{
+   DEBUGOUT((VERBOSE_HW, "%02lx:%02lx:%02lx:%02lx:%02lx:%02lx",
+         (ULONG)addr[0],  (ULONG)addr[1],  (ULONG)addr[2],  (ULONG)addr[3],  (ULONG)addr[4],  (ULONG)addr[5] ));
+}
+
+BOOL isBroadcastEthernetAddress(UBYTE * addr)
+{
+   return 0 == memcmp(addr, BROADCAST_ADDRESS, sizeof(BROADCAST_ADDRESS));
+}
+
+/**
+ * Copy Ethernet Address (6 bytes) as fast as possible!
+ * This is the fastest version in C I know.
+ *
+ * @param src
+ * @param dst
+ */
+void copyEthernetAddress(const BYTE * from, BYTE * to)
+{
+   ULONG * lsrc = (ULONG*) from;
+   ULONG * ldst = (ULONG*) to;
+
+   //Will result into 3 Assembler lines. But could be made by hand in 2 lines!
+
+   *ldst++ = *lsrc++;                  //first 4 bytes of the address
+   *(USHORT*) ldst = *(USHORT*) lsrc;  //last  2 bytes of the address
+}
+
+void setErrorOnRequest(struct IOSana2Req *ios2, BYTE io_Error, ULONG ios2_WireError)
+{
+   print(3, "Something went wrong!!\n");
+   ios2->ios2_WireError = ios2_WireError;
+   ios2->ios2_Req.io_Error = io_Error;
+}
+
+/**
+ * Tries to retrieve next Write packet. returns NULL if no packets to be send.
+ * @param etherUnit etherunit
+ * @return next write packet or NULL
+ */
+struct IOSana2Req * safeGetNextWriteRequest(struct DeviceDriverUnit * etherUnit)
+{
+   Forbid();
+   struct IOSana2Req * req = (struct IOSana2Req *)GetMsg((APTR)etherUnit->eu_Tx);
+   Permit();
+   return req;
+}
+
+

@@ -36,6 +36,7 @@
 
 #include "copybuffs.h"
 
+
 //Number of device units supported
 #define ED_MAXUNITS 1
 
@@ -44,17 +45,21 @@
 
 extern const UBYTE BROADCAST_ADDRESS[6];
 
-// --------------------------------- PROTOTYPES -------------------------------------------------------------
+// --------------------------------- MACROS -----------------------------------------------------------------
 
-struct Library * DeviceInit(BPTR DeviceSegList, struct Library * DevBasePointer, struct Library * execBase);
-void DeviceOpen(struct IOSana2Req *ios2, ULONG s2unit, ULONG s2flags, struct Library * devPointer);
-BPTR DeviceClose(struct IOSana2Req *ios2, struct Library * DevBase);
-BPTR DeviceExpunge(struct Library * DevBase);
-VOID DeviceBeginIO(struct IOSana2Req * ios2, struct Library * deviceBase);
-ULONG DeviceAbortIO( struct IOSana2Req *ios2, struct Library * DevPointer);
+#define GET_FIRST(a) ((APTR)(((struct MinList)(a)).mlh_Head))
+#define GET_NEXT(a) ((APTR)(((struct MinNode *)a)->mln_Succ))
+#define IS_VALID(a) (((struct MinNode *)a)->mln_Succ)
+
+#define STDETHERARGS struct IOSana2Req *ios2,struct DeviceDriverUnit *etherUnit, struct DeviceDriver *etherDevice
+
+#if DEBUG > 0
+#define PRINT_ETHERNET_ADDRESS(a) printEthernetAddress(a)
+#else
+#define PRINT_ETHERNET_ADDRESS(a)
+#endif
 
 // --------------------------------- TYPES ------------------------------------------------------------------
-
 
 struct SuperS2PTStats
 {
@@ -63,9 +68,8 @@ struct SuperS2PTStats
     struct Sana2PacketTypeStats  ss_Stats;
 };
 
-
 /*
-** Unit Data Structure
+** Device Unit Data Structure
 */
 struct DeviceDriverUnit
 {
@@ -142,7 +146,6 @@ struct BufferManagement
     struct SignalSemaphore  bm_RxQueueLock;        // Lock for this bm_RxQueue
 };
 
-
 // Struktur zum merken der Multicastadressen
 struct MCAF_Adresse
 {
@@ -151,43 +154,19 @@ struct MCAF_Adresse
     UBYTE               MCAF_Unit;
 };
 
+// --------------------------------- PROTOTYPES -------------------------------------------------------------
 
-//############ MACROS #################################
- 
+struct Library * DeviceInit(BPTR DeviceSegList, struct Library * DevBasePointer, struct Library * execBase);
+void DeviceOpen(struct IOSana2Req *ios2, ULONG s2unit, ULONG s2flags, struct Library * devPointer);
+BPTR DeviceClose(struct IOSana2Req *ios2, struct Library * DevBase);
+BPTR DeviceExpunge(struct Library * DevBase);
+VOID DeviceBeginIO(struct IOSana2Req * ios2, struct Library * deviceBase);
+ULONG DeviceAbortIO( struct IOSana2Req *ios2, struct Library * DevPointer);
 
-#define GET_FIRST(a) ((APTR)(((struct MinList)(a)).mlh_Head))
-#define GET_NEXT(a) ((APTR)(((struct MinNode *)a)->mln_Succ))
-#define IS_VALID(a) (((struct MinNode *)a)->mln_Succ)
-
-#define STDETHERARGS struct IOSana2Req *ios2,struct DeviceDriverUnit *etherUnit, struct DeviceDriver *etherDevice
-
-
-//############# prototypes ###################
-
-//internal private functions
-void  PerformIO(struct IOSana2Req *,struct DeviceDriver * DevBase);
-void  TermIO(struct IOSana2Req * ,struct DeviceDriver * DevBase);
-VOID  ExpungeUnit(UBYTE unitNumber, struct DeviceDriver *etherDevice);
-struct DeviceDriverUnit *InitUnitProcess(ULONG,struct DeviceDriver * ETHERDevice);
-VOID DevCmdTrackType(STDETHERARGS);
-VOID DevCmdUnTrackType(STDETHERARGS);
-VOID DevCmdConfigInterface(STDETHERARGS);
-VOID DevCmdReadPacket(STDETHERARGS);
-VOID DevCmdReadOrphan(STDETHERARGS);
-VOID DevCmdGetStationAddress(STDETHERARGS);
-VOID DevCmdOffline(STDETHERARGS);
-VOID DevCmdOnline(STDETHERARGS);
-VOID DevCmdDeviceQuery(STDETHERARGS);
-VOID DevCmdWritePacket(STDETHERARGS);
-VOID DevCmdFlush(STDETHERARGS);
-VOID DevCmdOnEvent(STDETHERARGS);
-VOID DevCmdGlobStats(STDETHERARGS);
-VOID DevCmdAddMulti(STDETHERARGS);
-VOID DevCmdRemMulti(STDETHERARGS);
-VOID DevCmdGetSpecialStats(STDETHERARGS);
-VOID DevCmdNSDeviceQuery(STDETHERARGS);
-VOID DevCmdBurstOut(STDETHERARGS);
-
+BOOL isBroadcastEthernetAddress(UBYTE * addr);
+void copyEthernetAddress(const BYTE * from, BYTE * to);
+void setErrorOnRequest(struct IOSana2Req *ios2, BYTE io_Error, ULONG ios2_WireError);
+struct IOSana2Req * safeGetNextWriteRequest(struct DeviceDriverUnit * etherUnit);
 VOID DoEvent(ULONG events,struct DeviceDriverUnit *etherUnit,struct DeviceDriver *etherDevice);
 bool serviceReadPackets(struct DeviceDriverUnit *etherUnit,struct DeviceDriver *etherDevice);
 
