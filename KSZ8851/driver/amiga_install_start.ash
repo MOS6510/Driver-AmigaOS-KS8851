@@ -2,8 +2,10 @@
 ; Install device and start it (with sashimi)
 ; Call it with "execute amiga_install_and_start.ash" on AmigaDOS Shell...
 
-echo "Install Device..."
-copy build/build-000/ksz8851.device.000 to devs:networks/ksz8851.device
+echo "Install Device...(any cpu)"
+failat 21
+copy >NIL: build/build-000/ksz8851.device.000 to devs:networks/ksz8851.device
+copy >NIL: build/build-020/ksz8851.device.020 to devs:networks/ksz8851.device
 
 echo "open sashimi"
 run >NIL: c:sashimi CONSOLE

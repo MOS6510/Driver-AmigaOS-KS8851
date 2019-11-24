@@ -69,6 +69,33 @@ const APTR InitTab[4] =
   (APTR)&asmDevInit
 };
 
+// ------------------------------ dealing with baserel comoilation ------------------------------------------
+
+//When compiled with baserel or baserl32
+#if defined(BASEREL)
+
+static inline APTR __GetDataSeg(void)
+{ APTR res;
+
+  __asm("lea ___a4_init,%0" : "=a" (res));
+  return res;
+}
+
+//const unsigned short __restore_a4[]; //= { 0x286e, OFFSET(LibraryHeader, dataSeg), 0x4e75 }; // "move.l a6@(dataSeg:w),a4;rts"
+
+void __restore_a4(void)
+{
+   __asm("lea   ___a4_init,a4");
+   //__asm("rts");
+}
+
+APTR dataSegment = NULL;
+#endif
+
+
+
+
+
 /**
  * AmigaOS entry point "DevInit".
  *
@@ -79,11 +106,15 @@ const APTR InitTab[4] =
  */
 SAVEDS
 struct Library * asmDevInit(REG(a0,BPTR SegListPointer),
-                          REG(d0,struct Library * dev),
-                          REG(a6,struct Library * exec_base))
+                            REG(d0,struct Library * dev),
+                            REG(a6,struct Library * exec_base))
 {
    //Pick up the exec base...
    SysBase = (struct ExecBase *)exec_base;
+
+#if defined(BASEREL)
+   dataSegment = __GetDataSeg();
+#endif
 
    return DeviceInit(SegListPointer, dev, exec_base );
 }
@@ -167,5 +198,6 @@ ADD2LIST(asmDevNullFunction, __FuncTable__,22); // => Unused AmigaOS function (b
 ADD2LIST(asmDevBeginIO,      __FuncTable__,22);
 ADD2LIST(asmDevAbortIO,      __FuncTable__,22);
 ADDTABL_END();
+
 
 

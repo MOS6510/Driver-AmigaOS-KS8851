@@ -6,7 +6,9 @@
 
 DEVICE_NAME   = ksz8851.device
 		   
-#CFLAGS		+= -DDEBUG=1
+# Base relative a4 register test (020):
+#CFLAGS		+= -fbaserel32 -msmall-code -DBASEREL=1
+#LDOPTS      += -fbaserel32 -msmall-code
 
 # Strip symbols if needed...
 #LDOPTS += -s
@@ -17,11 +19,10 @@ BUILDDIR=build/build-$(ARCH)
 SRC = $(wildcard *.c)
 HDR = $(wildcard *.h) 
 
-
-#Make sure "devinit" ist the first object file when linking...
+#Make sure "devinit.o" is the first object file when linking...
 FIRST_LINK_OBJECT = devinit.c 
 SRC_TMP := $(SRC)
-SRC = $(filter-out devinit.c, $(SRC_TMP))
+SRC = $(filter-out $(FIRST_LINK_OBJECT), $(SRC_TMP))
 SRC := $(FIRST_LINK_OBJECT) $(SRC)
 
 #Create List of objects from list of sources...
@@ -37,7 +38,7 @@ CFLAGS += -DDEVICE_NAME=\"$(DEVICE_NAME)\"
 
 .PHONY: all distribution
 
-all: builddir $(BUILDDIR)/$(DEVICE_NAME)
+all: builddir $(BUILDDIR)/$(DEVICE_NAME) devinit.s device.s
      
 builddir:
 	@mkdir -p $(BUILDDIR)
@@ -54,13 +55,13 @@ device: $(BUILDDIR)/$(DEVICE_NAME)
 
 $(BUILDDIR)/$(DEVICE_NAME):	$(OBJS)
 		@echo "Linking       " $@
-		$(LD) $^ -o $@.$(ARCH) $(LDOPTS)
+		@$(LD) $^ -o $@.$(ARCH) $(LDOPTS)
 		@strings $@.$(ARCH) | grep '$$VER'
 		@ls -la $@.$(ARCH)
 		
 clean:
-		@rm -r -f -d *.o *.s *.aobj *.device *.map mapfile $(BUILDDIR)/*.o $(BUILDDIR)/*.device
-		@rm -fr $(BUILDDIR)
+		rm -rf -d *.o *.s *.aobj *.device *.map mapfile $(BUILDDIR)/*.o $(BUILDDIR)/*.device
+		rm -fr build/  $(BUILDDIR)
 
 $(BUILDDIR)/%.o:%.c $(HDR)
 	@echo "Compiling C   " $< " (68"$(ARCH)")"

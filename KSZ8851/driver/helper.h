@@ -7,9 +7,11 @@
 #ifndef HELPER_H
 #define HELPER_H
 
+#include <exec/initializers.h>
+
 //only used when compiled with baserel option but want to get rid of the compiler warning...
-#if baserel
-#define SAVEDS __saveds__
+#if defined(BASEREL)
+#define SAVEDS __saveds
 #else
 #define SAVEDS
 #endif
