@@ -72,7 +72,7 @@ static const char * DEVICE_TASK_NAME = DEVICE_NAME " Unit Task";
 static ULONG AbortRequestAndRemove(struct MinList *, struct IOSana2Req *,struct DeviceDriver *,struct SignalSemaphore * lock);
 static void  AbortReqList(struct MinList *minlist,struct DeviceDriver * EtherDevice);
 static BOOL  ReadConfig(struct DeviceDriver *);
-static void DevProcEntry();
+static void DevProcEntry(void);
 static BOOL checkStackSpace(int minStackSize);
 
 //############################### CONST #######################################
@@ -113,7 +113,7 @@ extern long __oslibversion;
 //############ Externe Variablen und Funktionen ################################
 
 SAVEDS
-ULONG FakePFHookEntry()
+ULONG FakePFHookEntry(void)
 {
    return 1;
 }
@@ -126,11 +126,8 @@ ULONG FakePFHookEntry()
  * @param exec_base
  * @return
  */
-struct Library * DevInit(BPTR DeviceSegList, struct Library * DevBasePointer, struct Library * execBase) {
-
-   //Take the exec base...
-   SysBase = (struct ExecBase *)execBase;
-
+struct Library * DeviceInit(BPTR DeviceSegList, struct Library * DevBasePointer, struct Library * execBase)
+{
    //Activate "Automatic Open Library support of libnix".
    //Because we don't use an device startup here we must all the auto-open-function by hand.
    //If not all libraries are not open automatically especially the "utility.library" when using "libnix"
@@ -138,13 +135,15 @@ struct Library * DevInit(BPTR DeviceSegList, struct Library * DevBasePointer, st
    __oslibversion = 37l; //open all libs with at least Version 37
    __initlibraries();
 
+   DEBUGOUT((1, "DevInit: DeviceSegList=0x%lx, BasePointer=0x%lx, execBase=0x%lx\n", DeviceSegList, DevBasePointer, execBase));
+
+   //take over Device Base Pointer...
+   globEtherDevice = (struct DeviceDriver *)DevBasePointer;
+
+
    CHECK_LIBRARY_IS_OPEN(DOSBase);
    CHECK_LIBRARY_IS_OPEN(IntuitionBase);
 
-   DEBUGOUT((1, "DevInit: DeviceSegList=0x%lx, BasePointer=0x%lx, execBase=0x%lx\n", DeviceSegList, DevBasePointer, execBase));
-
-   globEtherDevice = (struct DeviceDriver *)DevBasePointer;
-   
    //init device structure  
    globEtherDevice->ed_Device.lib_Node.ln_Type = NT_DEVICE;
    globEtherDevice->ed_Device.lib_Node.ln_Name = (UBYTE *)DevName;
@@ -166,6 +165,7 @@ struct Library * DevInit(BPTR DeviceSegList, struct Library * DevBasePointer, st
    InitSemaphore((APTR)&globEtherDevice->ed_DeviceLock);
    InitSemaphore((APTR)&globEtherDevice->ed_MCAF_Lock);
    
+   DEBUGOUT((1, "DevInit end, returning 0x%lx\n", globEtherDevice));
    return (struct Library *)globEtherDevice;
 }
 
@@ -178,7 +178,7 @@ struct Library * DevInit(BPTR DeviceSegList, struct Library * DevBasePointer, st
  * @param s2flags
  * @param devPointer
  */
-void DevOpen(struct IOSana2Req *ios2,
+void DeviceOpen(struct IOSana2Req *ios2,
               ULONG s2unit, 
               ULONG s2flags,
               struct Library * devPointer)
@@ -186,11 +186,19 @@ void DevOpen(struct IOSana2Req *ios2,
    struct DeviceDriverUnit *etherUnit;
    struct BufferManagement *bm;
    BOOL success = FALSE; 
-   
+
    DEBUGOUT((VERBOSE_DEVICE, "Parameter Test: '1' == %ld (16 bit)\n", (uint16_t) 1));
    DEBUGOUT((VERBOSE_DEVICE, "Parameter Test: '2' == %ld (32 bit)\n", (uint32_t) 2));
+   DEBUGOUT((VERBOSE_DEVICE, "Parameter Test: '0x5678'     == 0x%lx (16 bit)\n", (uint32_t) 0x5678));
+   DEBUGOUT((VERBOSE_DEVICE, "Parameter Test: '0x12345678' == 0x%lx (32 bit)\n", (uint32_t) 0x12345678));
 
-   DEBUGOUT((VERBOSE_DEVICE, "DevOpen(ioreq=0x%lx, unit=%ld, flags=0x%lx)...\n", ios2, s2unit, s2flags));
+   DEBUGOUT((VERBOSE_DEVICE, "DevOpen(ioreq=0x%lx, unit=%ld, flags=0x%lx, devPointer=0x%lx)...\n", ios2, s2unit, s2flags, devPointer));
+
+   if (s2unit != 0)
+   {
+      DEBUGOUT((VERBOSE_DEVICE, "Unit %ld is not supported!!!!\n", s2unit));
+      return;
+   }
 
 
    //Only when device is opened check that the stack is at leased 5000 bytes in size.
@@ -198,6 +206,8 @@ void DevOpen(struct IOSana2Req *ios2,
    //Bring up waring. Exit with failure.
    if (!checkStackSpace(STACK_SIZE_MINIMUM))
    {
+      DEBUGOUT((VERBOSE_DEVICE, "Stack too small!!!!\n"));
+
       //__request("Stack size is too small! Please increase the size to at least 5kb...");
       ios2->ios2_Req.io_Error = IOERR_OPENFAIL;
       ios2->ios2_Req.io_Unit = (struct Unit *) -1;
@@ -214,7 +224,6 @@ void DevOpen(struct IOSana2Req *ios2,
    //Test and check hardware
    if (hal_probe())
    {
-
       //jetzt exklusiven Zugriff ?
       if (s2flags & SANA2OPF_MINE)
       {
@@ -237,15 +246,11 @@ void DevOpen(struct IOSana2Req *ios2,
       /* Only "UNIT 0" is supported to open */
       if(s2unit < ED_MAXUNITS)
       {
-         Alert(10);
-
          //Bring up unit device process...
          etherUnit = InitUnitProcess(s2unit,globEtherDevice);
 
          if( etherUnit )
          {
-            Alert(6);
-
             //PromMode setzen/löschen wenn Device schon online
             if (etherUnit->eu_State & ETHERUF_ONLINE)
             {
@@ -344,7 +349,6 @@ void DevOpen(struct IOSana2Req *ios2,
                   bm->bm_CopyFromBuffer   = (APTR)&globEtherDevice->ed_DummyPFHook.h_Entry;
 
                success = TRUE;
-               Alert(4);
 
                globEtherDevice->ed_Device.lib_OpenCnt++;
                globEtherDevice->ed_Device.lib_Flags &=~LIBF_DELEXP;
@@ -384,7 +388,7 @@ void DevOpen(struct IOSana2Req *ios2,
  * @param DevBase
  * @return
  */
-BPTR DevClose(struct IOSana2Req *ios2, struct Library * DevBase)
+BPTR DeviceClose(struct IOSana2Req *ios2, struct Library * DevBase)
 {
    struct DeviceDriverUnit *etherUnit;
    BPTR seglist = 0L;
@@ -452,10 +456,9 @@ BPTR DevClose(struct IOSana2Req *ios2, struct Library * DevBase)
 
       // Check to see if we've been asked to expunge.
       // In this case expunge Device now...
-      if (globEtherDevice->ed_Device.lib_Flags & LIBF_DELEXP) {
-         BPTR DevExpunge(struct Library * DevBase);
-
-         seglist = DevExpunge(DevBase);
+      if (globEtherDevice->ed_Device.lib_Flags & LIBF_DELEXP)
+      {
+         seglist = DeviceExpunge(DevBase);
          DEBUGOUT((VERBOSE_DEVICE, "DevClose(): Device was expunged (cause of an delayed expunge)!\n"));
          DevBase = NULL;
          globEtherDevice = NULL;
@@ -496,7 +499,7 @@ BPTR DevClose(struct IOSana2Req *ios2, struct Library * DevBase)
  * @param DevBase
  * @return
  */
-BPTR DevExpunge(struct Library * DevBase)
+BPTR DeviceExpunge(struct Library * DevBase)
 {
     BPTR seglist = (BPTR)0L;
 
@@ -538,6 +541,9 @@ BPTR DevExpunge(struct Library * DevBase)
        DEBUGOUT((VERBOSE_DEVICE, "DevExpunge() ends. Device is expunged now...\n\n"));
     }
 
+    //Freeing all auto-open libraries again after expunge lib.
+    __exitlibraries();
+
     //If we return a real segment list it will be freed by AmigaOS...
     return seglist;
 }
@@ -549,8 +555,7 @@ BPTR DevExpunge(struct Library * DevBase)
  * @param DevPointer
  * @return io_error code again
  */
-ULONG DevAbortIO( struct IOSana2Req *ios2,
-                  struct Library * DevPointer)                  
+ULONG DeviceAbortIO( struct IOSana2Req *ios2, struct Library * DevPointer)
 {
    ULONG result = IOERR_NOCMD; //Default: Error
    struct DeviceDriverUnit *etherUnit;
@@ -891,7 +896,7 @@ VOID ExpungeUnit(UBYTE unitNumber, struct DeviceDriver *etherDevice)
 /**
  * This is the entry point for the Device Unit process.
  */
-SAVEDS void DevProcEntry()
+SAVEDS void DevProcEntry(void)
 {     
     struct Process *proc;
     struct DeviceDriverUnit *etherUnit;
@@ -1050,7 +1055,7 @@ SAVEDS void DevProcEntry()
  * @param ios2
  * @param deviceBase
  */
-VOID DevBeginIO(struct IOSana2Req * ios2,
+void DeviceBeginIO(struct IOSana2Req * ios2,
                 struct Library * deviceBase)
 {
    register UWORD Cmd = ios2->ios2_Req.io_Command;

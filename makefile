@@ -20,6 +20,7 @@ CFLAGS								+= -O2 \
 										$(INC_SRCH_PATH) \
 										-fno-builtin-printf \
 										-fomit-frame-pointer \
+										-Wstrict-prototypes \
                               -noixemul \
                               -Wall \
                               -m68$(ARCH) \
@@ -33,14 +34,14 @@ endif
 export CCPATH CC LD CXX CFLAGS LDFLAGS RANLIB LD AOS_INCLUDES OS_INCLUDES CFLAGS ARCH PROJ_ROOT XDFTOOL
 
 all:
-	@$(MAKE) -C KSZ8851/servicetool
+	#@$(MAKE) -C KSZ8851/servicetool
 	@$(MAKE) -C KSZ8851/driver
 	
 debug:	CFLAGS += -DDEBUG -g
 debug:
-	@$(MAKE) -C KSZ8851/servicetool 
-	@$(MAKE) -C KSZ8851/driver
-	@$(MAKE) -C KSZ8851/driver devinit.s device.s
+	#@$(MAKE) -C KSZ8851/servicetool 
+	@$(MAKE) -C KSZ8851/driver 
+#	devinit.s device.s
 	
 # 	CFLAGS = -DDEBUG -g
 

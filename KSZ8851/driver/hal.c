@@ -14,7 +14,6 @@
 #include <exec/alerts.h>
 #include <hardware/intbits.h>
 #include <dos/exall.h>
-#include <stabs.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/graphics.h>
@@ -22,13 +21,15 @@
 
 #include "devdebug.h"
 #include "hal.h"
+
+#include "../../os_includes/libnix/stabs.h"
 #include "tools.h"
 #include "version.h"
 
 
 //########### PROTOTYPES #####################
 
-typedef void (*VoidFunc )();
+typedef void (*VoidFunc )(void);
 
 #define printf neverUsePrintfHere
 

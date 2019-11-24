@@ -44,6 +44,18 @@
 
 extern const UBYTE BROADCAST_ADDRESS[6];
 
+// --------------------------------- PROTOTYPES -------------------------------------------------------------
+
+struct Library * DeviceInit(BPTR DeviceSegList, struct Library * DevBasePointer, struct Library * execBase);
+void DeviceOpen(struct IOSana2Req *ios2, ULONG s2unit, ULONG s2flags, struct Library * devPointer);
+BPTR DeviceClose(struct IOSana2Req *ios2, struct Library * DevBase);
+BPTR DeviceExpunge(struct Library * DevBase);
+VOID DeviceBeginIO(struct IOSana2Req * ios2, struct Library * deviceBase);
+ULONG DeviceAbortIO( struct IOSana2Req *ios2, struct Library * DevPointer);
+
+// --------------------------------- TYPES ------------------------------------------------------------------
+
+
 struct SuperS2PTStats
 {
     struct MinNode               ss_Node;

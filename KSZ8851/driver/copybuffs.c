@@ -15,8 +15,6 @@
 #include <exec/alerts.h>
 #include <hardware/intbits.h>
 #include <dos/exall.h>
-#include <stabs.h>
-
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/graphics.h>
@@ -24,6 +22,8 @@
 #include <devices/sana2.h>
 
 #include <time.h>
+
+#include "../../os_includes/libnix/stabs.h"
 #include "helper.h"
 
 

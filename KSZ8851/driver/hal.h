@@ -23,34 +23,25 @@
  * Probing the hardware.
  * @return true: hardware is ok and detected. Fals if not.
  */
-bool hal_probe();
+bool hal_probe(void);
 
 /**
  * Init the hardware in any way...
  */
-void hal_initialization();
+void hal_initialization(void);
 
 /**
  * prepare for destroying.
  */
-void hal_deinitialization();
+void hal_deinitialization(void);
 
 
 bool connectPCService(struct DeviceDriverUnit *etherUnit, char * sPCCmd, char * sPCPktDrvCmd, char * sPCPktDrvPar);
-void disconnectPCService();
-bool isEtherbridgeServiceDeleted();
-void CallPC();
 bool serviceReadPackets (struct DeviceDriverUnit *etherUnit,struct DeviceDriver *etherDevice);
 bool serviceWritePackets(struct DeviceDriverUnit *etherUnit,struct DeviceDriver *etherDevice) ;
-char getNextFreeTransmitBufferIndexWait();
 LONG milliSecondsToTicks(ULONG milliSeconds);
 void SetIrqAndIOBase(int IOBase, unsigned char Irq);
-bool ShutDownPCServer();
-void uninstallHandler();
-BOOL installPollHandler(struct Task * forTask, ULONG signalBitForTask);
-void uninstallPollHandler();
 void SetPromMode(BOOL);
-void ShutDownPktDrv();
 unsigned int waitForCmdExecuted(UBYTE Port,int MaxMilliTime);
 void copyEthernetAddress(const BYTE * from, BYTE * to);
 ULONG CallFilterHook(struct Hook * hook, struct IOSana2Req * ioreq, APTR rawPktData);

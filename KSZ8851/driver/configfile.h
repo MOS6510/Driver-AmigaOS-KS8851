@@ -16,7 +16,7 @@ void RegistryInit( const char * File);
 /**
  * Destroy config reader
  */
-void RegistryDestroy();
+void RegistryDestroy(void);
 
 /**
  * Read a string value from an key.

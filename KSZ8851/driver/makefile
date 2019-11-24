@@ -15,14 +15,25 @@ DEVICE_NAME   = ksz8851.device
 BUILDDIR=build/build-$(ARCH)
                             
 SRC = $(wildcard *.c)
-HDR = $(wildcard *.h)
-OBJS = $(patsubst %.c, $(BUILDDIR)/%.o, $(SRC))                            
+HDR = $(wildcard *.h) 
+
+
+#Make sure "devinit" ist the first object file when linking...
+FIRST_LINK_OBJECT = devinit.c 
+SRC_TMP := $(SRC)
+SRC = $(filter-out devinit.c, $(SRC_TMP))
+SRC := $(FIRST_LINK_OBJECT) $(SRC)
+
+#Create List of objects from list of sources...
+OBJS = $(patsubst %.c, $(BUILDDIR)/%.o, $(SRC))
+                    
                                                             
 LDOPTS += -noixemul -nostartfiles -lnix -lamiga -ldebug -lstubs
 LDOPTS += -Wl,-Map,$@.map -Wl,--cref 
 CFLAGS += -Wno-pointer-sign
 CFLAGS += -DDEVICE_NAME=\"$(DEVICE_NAME)\"
 #LDOPTS += --verbose
+
 
 .PHONY: all distribution
 
@@ -43,7 +54,7 @@ device: $(BUILDDIR)/$(DEVICE_NAME)
 
 $(BUILDDIR)/$(DEVICE_NAME):	$(OBJS)
 		@echo "Linking       " $@
-		@$(LD) $^ -o $@.$(ARCH) $(LDOPTS)
+		$(LD) $^ -o $@.$(ARCH) $(LDOPTS)
 		@strings $@.$(ARCH) | grep '$$VER'
 		@ls -la $@.$(ARCH)
 		
@@ -55,7 +66,7 @@ $(BUILDDIR)/%.o:%.c $(HDR)
 	@echo "Compiling C   " $< " (68"$(ARCH)")"
 	@$(CC) -c $(CFLAGS) -o $@ $< 
 
-.c.s:
+.c.s: $(HDR)
 	@echo "Compiling C (only to ASM) " $< " (68"$(ARCH)")"
 	@$(CC) -S $(CFLAGS) -o $@ $< 
 	
