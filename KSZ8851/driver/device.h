@@ -54,6 +54,7 @@ extern const UBYTE BROADCAST_ADDRESS[6];
 #define STDETHERARGS struct IOSana2Req *ios2,struct DeviceDriverUnit *etherUnit, struct DeviceDriver *etherDevice
 
 #if DEBUG > 0
+void printEthernetAddress(unsigned char * addr );
 #define PRINT_ETHERNET_ADDRESS(a) printEthernetAddress(a)
 #else
 #define PRINT_ETHERNET_ADDRESS(a)

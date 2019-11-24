@@ -39,15 +39,4 @@
 extern void CHECK_ALREADY_QUEUED(struct List *, struct Node*);
 
 
-#if DEBUG >0
-void printEthernetAddress(UBYTE * addr);
-#else
-   #define printEthernetAddress(addr)
-#endif
-
-
-
-
-
-
 #endif /* TOOLS_H_ */

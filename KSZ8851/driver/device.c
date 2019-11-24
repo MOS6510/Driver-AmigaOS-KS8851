@@ -1482,7 +1482,9 @@ VOID DevCmdGetStationAddress(STDETHERARGS)
  */
 VOID DevCmdConfigInterface(STDETHERARGS)
 {
-   DEBUGOUT((VERBOSE_DEVICE,"*ConfigInterface(addr = ")); printEthernetAddress(ios2->ios2_SrcAddr); DEBUGOUT((VERBOSE_DEVICE,")\n"));
+   DEBUGOUT((VERBOSE_DEVICE,"*ConfigInterface(addr = "));
+   PRINT_ETHERNET_ADDRESS(ios2->ios2_SrcAddr);
+   DEBUGOUT((VERBOSE_DEVICE,")\n"));
 
     /* Note: we may only be configured once. */
     if(!(etherUnit->eu_State & ETHERUF_CONFIG))
@@ -1734,7 +1736,7 @@ VOID DevCmdAddMulti(STDETHERARGS)
       // und in Liste der MCAF's 
       AddHead((APTR)&globEtherDevice->ed_MCAF,(APTR)NewMCAF);
       print(VERBOSE_DEVICE," Neue Multicastadresse :\n");
-      printEthernetAddress(NewMCAF->MCAF_Adr);
+      PRINT_ETHERNET_ADDRESS(NewMCAF->MCAF_Adr);
       TermIO(ios2,globEtherDevice);
       
       //TODO:
@@ -1948,11 +1950,13 @@ void CHECK_ALREADY_QUEUED(struct List * list, struct Node * node)
 #endif
 }
 
-void printEthernetAddress(UBYTE * addr)
+#if DEBUG > 0
+void printEthernetAddress(unsigned char * addr)
 {
    DEBUGOUT((VERBOSE_HW, "%02lx:%02lx:%02lx:%02lx:%02lx:%02lx",
          (ULONG)addr[0],  (ULONG)addr[1],  (ULONG)addr[2],  (ULONG)addr[3],  (ULONG)addr[4],  (ULONG)addr[5] ));
 }
+#endif
 
 BOOL isBroadcastEthernetAddress(UBYTE * addr)
 {
