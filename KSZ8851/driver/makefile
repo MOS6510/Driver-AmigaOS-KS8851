@@ -16,8 +16,8 @@ DEVICE_NAME   = ksz8851.device
 # Build subdirectory for every supported microprocessor (68000-68080)
 BUILDDIR=build/build-$(ARCH)
                             
-SRC = $(wildcard *.c)
-HDR = $(wildcard *.h) 
+SRC += $(wildcard *.c)
+HDR += $(wildcard *.h) 
 
 #Make sure "devinit.o" is the first object file when linking...
 FIRST_LINK_OBJECT = devinit.c 

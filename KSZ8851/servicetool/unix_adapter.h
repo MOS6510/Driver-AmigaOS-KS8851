@@ -4,6 +4,7 @@
 /**
  * Defining some stuff to make the linux driver compile for AmigaOS.
  */
+#include <string.h>
 
 #define u8 unsigned char
 #define u16 unsigned short
@@ -82,7 +83,7 @@ struct sk_buff {
 #define NETDEV_TX_OK 1
 #define NETDEV_TX_OK 1
 
-#define irqreturn_t
+#define irqreturn_t unsigned char
 
 unsigned int ioread8(void __iomem *addr);
 unsigned int ioread16(void __iomem *addr);
@@ -107,8 +108,13 @@ void iowrite16(u16 value, void __iomem *addr);
 #define netdev_hw_addr_list_for_each(ha, l) \
    list_for_each_entry(ha, &(l)->list, list)
 
-
+#define netdev_hw_addr_list_count(x) 0
+//#define netdev_hw_addr_list_count(l) ((l)->count)
+#define netdev_mc_count(dev) netdev_hw_addr_list_count(&(dev)->mc)
+#define netdev_mc_empty(dev) netdev_hw_addr_list_empty(&(dev)->mc)
 #define netdev_for_each_mc_addr(ha, dev) for(;;)
+#define netdev_warn(...)
+
 #define SET_NETDEV_DEV(a,b)
 #define ENOMEM 1
 #define alloc_etherdev(size) (0l)
@@ -127,17 +133,22 @@ struct module {
 };
 
 struct device {
+   void * platform_data;
+   void * driver_data;
 };
 
 struct platform_device_id {
 };
 
 struct platform_device {
-
+   struct device  dev;
 };
 
 #define pm_message_t int
 
+/**
+ * Linux: The basic device driver structure
+ */
 struct device_driver {
    const char     *name;
    struct bus_type      *bus;
@@ -222,6 +233,79 @@ struct platform_driver {
 
 
 #define devm_platform_ioremap_resource(a,b) (u32)(ETHERNET_BASE_ADDRESS + KS8851_REG_DATA_OFFSET)
+
+//Define some functions that are not realy used:
+#define netif_dbg(...)
+#define mdelay(x)
+#define likely(x)       __builtin_expect((x),1)
+#define unlikely(x)     __builtin_expect((x),0)
+#define ALIGN(x,a)              __ALIGN_MASK(x,(typeof(x))(a)-1)
+#define __ALIGN_MASK(x,mask)    (((x)+(mask))&~(mask))
+#define pr_err(...)
+#define netif_info(...)
+#define mutex_lock(...)
+#define mutex_unlock(...)
+void free_irq ( unsigned int irq, void * dev_id);
+#define spin_lock(...)
+#define spin_unlock(...)
+
+
+//TODO: Has to be implemented:
+struct sk_buff * netdev_alloc_skb ( struct net_device * dev, unsigned int   length);
+void skb_reserve (   struct sk_buff * skb, int len);
+unsigned char * skb_put (  struct sk_buff * skb, unsigned int   len);
+#define __be16 u16
+__be16 eth_type_trans ( struct sk_buff * skb, struct net_device * dev);
+int netif_rx ( struct sk_buff * skb);
+void netif_carrier_on  ( struct net_device * dev);
+void netif_carrier_off ( struct net_device * dev);
+void netif_wake_queue ( struct net_device * dev);
+typedef irqreturn_t (*irq_handler_t)(int, void *);
+int request_irq ( unsigned int   irq,
+   irq_handler_t     handler,
+   unsigned long     irqflags,
+   const char *   devname,
+   void *   dev_id);
+void netif_start_queue (   struct net_device * dev);
+void netif_stop_queue ( struct net_device * dev);
+u16 cpu_to_le16(u16 var);
+void disable_irq (   unsigned int irq);
+void dev_kfree_skb(struct sk_buff *skb);
+void enable_irq ( unsigned int irq);
+void unregister_netdev (   struct net_device * dev);
+void free_netdev (   struct net_device * dev);
+
+
+//Modul magic:
+#define module_platform_driver(...)
+/*
+#define module_platform_driver(__platform_driver) \
+   module_driver(__platform_driver, platform_driver_register, \
+         platform_driver_unregister)
+#define module_driver(__driver, __register, __unregister, ...) \
+static int __init __driver##_init(void) \
+{ \
+   return __register(&(__driver) , ##__VA_ARGS__); \
+} \
+module_init(__driver##_init); \
+static void __exit __driver##_exit(void) \
+{ \
+   __unregister(&(__driver) , ##__VA_ARGS__); \
+} \
+module_exit(__driver##_exit);
+*/
+static inline void *dev_get_drvdata(const struct device *dev)
+{
+   return dev->driver_data;
+}
+
+static inline void *platform_get_drvdata(const struct platform_device *pdev)
+{
+   return dev_get_drvdata(&pdev->dev);
+}
+
+
+
 
 
 

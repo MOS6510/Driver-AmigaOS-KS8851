@@ -34,10 +34,8 @@
 #include <linux/of_net.h>
 */
 
-//AmigaOS
+//AmigaOS port:
 #include "../servicetool/unix_adapter.h"
-
-
 #include "../servicetool/ks8851.h"
 
 #define  DRV_NAME "ks8851_mll"
@@ -1396,8 +1394,6 @@ err_free:
 
 #endif
 
-#if 0
-
 static int ks8851_remove(struct platform_device *pdev)
 {
    struct net_device *netdev = platform_get_drvdata(pdev);
@@ -1407,7 +1403,6 @@ static int ks8851_remove(struct platform_device *pdev)
    return 0;
 
 }
-#endif
 
 static struct platform_driver ks8851_platform_driver = {
    .driver = {

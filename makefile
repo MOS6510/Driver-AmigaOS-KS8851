@@ -33,19 +33,21 @@ endif
                           
 export CCPATH CC LD CXX CFLAGS LDFLAGS RANLIB LD AOS_INCLUDES OS_INCLUDES CFLAGS ARCH PROJ_ROOT XDFTOOL
 
+# Release version: make
 all: 	CFLAGS += -s
 all:
-	#@$(MAKE) -C KSZ8851/servicetool
+	@$(MAKE) -C KSZ8851/servicetool
 	@$(MAKE) -C KSZ8851/driver
 	
+# Debug version: make debug
 debug:	CFLAGS += -DDEBUG -g
 debug:
-	#@$(MAKE) -C KSZ8851/servicetool 
+	@$(MAKE) -C KSZ8851/servicetool 
 	@$(MAKE) -C KSZ8851/driver 
 
 
 .PHONY: clean
 
 clean:
-	#@$(MAKE) -C KSZ8851/servicetool clean
+	@$(MAKE) -C KSZ8851/servicetool clean
 	@$(MAKE) -C KSZ8851/driver clean

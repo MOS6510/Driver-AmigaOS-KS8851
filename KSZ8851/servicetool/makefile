@@ -5,6 +5,7 @@
 #
 
 SOURCE_TESTTOOL   = testtool.c ks8851_mll.c
+HDR 					:= $(wildcard *.h) 
 
 COMPILE_MODE		=
 COMPILE_MODE		+= -DDEBUG=1
@@ -17,7 +18,7 @@ STRIP_OPTS 		 = -s
 
 #AMIGA_EXPLORER = ./Software_Tests_and_Tools/lxamiga.pl
 
-#If not given via command line build for "68000"
+#If not given via command line build for "MC68000"
 ifeq ($(ARCH),)
 	ARCH=000
 endif	
@@ -35,7 +36,7 @@ LINKER                       = $(CCPATH)/bin/gcc
 AOS_INCLUDES                 = -Iincludes/os-include39/include/include_h 
 OS_INCLUDES                  = -Iincludes -Iincludes/sana -Iincludes/libnix -Iincludes/mui
 PRJ_INCLUDES                 = -I. -IEtherPrefs
-CC_OPTS                      += -O2 -fstrength-reduce \
+CC_OPTS                      += -Os -fstrength-reduce \
                               -nostdinc $(AOS_INCLUDES) -I$(CCPATH)/include -I$(CCPATH)/sys-include $(OS_INCLUDES) $(PRJ_INCLUDES)  \
                               -fno-builtin-printf \
                               -g \
@@ -45,7 +46,7 @@ CC_OPTS                      += -O2 -fstrength-reduce \
                               -m68$(ARCH) \
                               -msoft-float                               
                               
-CPPFLAGS								+= -O3 -D__cplusplus $(AOS_INCLUDES) $(OS_INCLUDES) -I. \
+CPPFLAGS								+= -Os -D__cplusplus $(AOS_INCLUDES) $(OS_INCLUDES) -I. \
 										 -m68$(ARCH) 
                                                             
 LINKER_OPTS                	= -Llibs -nostdlib -noixemul -lnix -lamiga -lstubs 
@@ -77,7 +78,7 @@ clean:
 		rm -r -f -d $(BUILDDIR)/* *.o *.s *.aobj *.map mapfile
 
 #.c.o:
-$(BUILDDIR)/%.o:%.c
+$(BUILDDIR)/%.o:%.c $(HDR)
 	@echo "Compiling C   " $< " (cpu=68"$(ARCH)")"
 	@$(CC) -c -nostdinc $(CC_OPTS) -o $@ $< 
 
