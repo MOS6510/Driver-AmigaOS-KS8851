@@ -29,6 +29,8 @@ static const char * VERSION = "1.2";
 #define COLOR03   "\033[33m"
 #define NORMAL    "\033[0m"
 #define CLRSCR    "\033[1;1H\033[2J"
+#define CURSOR_UP "\033[1A"
+
 
 #define TEST_ENTERED() printf("%s...", __func__);
 #define TEST_LEAVE(a)  printf("%s\n", (a) ? "success" : "failed!");
@@ -57,6 +59,7 @@ void dumpRegister8BitMode(struct ks_net * ks);
 u8 KSZ8851ReadReg8(struct ks_net * ks, int offset);
 
 extern struct ks_net * ks8851_init();
+void done(void);
 
 
 /**
@@ -330,7 +333,7 @@ error_t ksz8851Init(struct ks_net * ks) {
    //Force link in half-duplex if auto-negotiation failed
    ksz8851ClearBit(ks, KS_P1CR, P1CR_FORCEFDX);
 
-   //Restart auto-negotiation
+   //Restart auto-negotiation (seems to need time time, stops the links for some amount of time)
    ksz8851SetBit(ks, KS_P1CR, P1CR_RESTARTAN);
 
    //Clear interrupt flags
@@ -372,8 +375,14 @@ void printMAC(struct ks_net * ks)
          mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
 }
 
+struct ks_net * ks = NULL;
+
 int main(int argc, char * argv[])
 {
+   bool looping = false;
+
+   atexit(done);
+
    printf(CLRSCR);
    printf("Amiga1200+ KSZ8851-16MLL Service Tool\nVersion %s (build %d, %s, %s)\n", VERSION, build_number, __DATE__, __TIME__);
    printf("Memory base address of ethernet chip: 0x%lx\n", ETHERNET_BASE_ADDRESS);
@@ -403,6 +412,10 @@ int main(int argc, char * argv[])
          if (strcmp(argv[i], "swapcmd") == 0) {
             swappingCmdRegValue = true;
          }
+
+         if (strcmp(argv[i], "loop") == 0) {
+            looping = true;
+         }
       }
    }
    else
@@ -412,6 +425,7 @@ int main(int argc, char * argv[])
             " eb: switch chip to big endian mode\n"
             " swapdata: swap every 16 bit of data register value\n"
             " swapcmd:  swap every 16 bit of cmd register value\n"
+            " loop:  stay until key pressed. reporting link states\n"
             , argv[0]);
       exit(0);
    }
@@ -425,7 +439,7 @@ int main(int argc, char * argv[])
 
    {
       //Init network structure
-      struct ks_net * ks = ks8851_init();
+      ks = ks8851_init();
 
       if (swappingDataRegValue) {
          printf("%s-tool is swapping every 16 bit data during chip access.\n", argv[0]);
@@ -451,19 +465,36 @@ int main(int argc, char * argv[])
          printCCR(ks);
          printMAC(ks);
 
-         //
-         // Get Link Status:
-         //
-         u16 val = KSZ8851ReadReg16(ks, KS_P1SR);
-         printf("Ethernet Link Status: %s\n", val & P1SR_LINK_GOOD ? "Up" : "Down" );
-      }
+         //Reporting endless:
+         do {
 
-      //
-      // Dump registers...
-      //
-      dumpRegister8BitMode(ks);
-      dumpRegister16BitMode(ks);
+            //
+            // Get Link Status:
+            //
+
+            u16 val = KSZ8851ReadReg16(ks, KS_P1SR);
+            printf("Ethernet Link Status: %s", val & P1SR_LINK_GOOD ? "UP" : "DOWN");
+            if (val & P1SR_LINK_GOOD) {
+               printf(" (%s, %s)", //
+                     val & P1SR_OP_FDX ? "duplex" : "half duplex", //
+                     val & val & P1SR_OP_100M ? "100Mbps" : "10Mbps");
+            } else {
+               printf("                 ");
+            }
+            Delay(12.5);
+            printf("\n%s",CURSOR_UP);
+
+         } while(looping);
+      }
    }
 
    return 0;
+}
+
+void done(void) {
+   //
+   // Dump registers...
+   //
+   dumpRegister8BitMode(ks);
+   dumpRegister16BitMode(ks);
 }
