@@ -40,7 +40,7 @@
 
 #define  DRV_NAME "ks8851_mll"
 
-static u8 KS_DEFAULT_MAC_ADDRESS[] = { 0x00, 0x10, 0xA1, 0x86, 0x95, 0x11 };
+//static u8 KS_DEFAULT_MAC_ADDRESS[] = { 0x00, 0x10, 0xA1, 0x86, 0x95, 0x11 };
 #define MAX_RECV_FRAMES       255
 #define MAX_BUF_SIZE       2048
 #define TX_BUF_SIZE        2000
@@ -152,7 +152,7 @@ struct ks_net {
 };
 #endif
 
-static int msg_enable;
+//static int msg_enable;
 
 #define BE3             0x8000      /* Byte Enable 3 */
 #define BE2             0x4000      /* Byte Enable 2 */
@@ -230,7 +230,7 @@ void ks_wrreg16(struct ks_net *ks, int offset, u16 value)
    iowrite16(value, ks->hw_addr);
 }
 
-
+#if 0
 
 /**
  * ks_inblk - read a block of data from QMU. This is called after sudo DMA mode enabled.
@@ -431,6 +431,8 @@ static void ks_disable_qmu(struct ks_net *ks)
 
 }  /* ks_disable_qmu */
 
+#endif
+
 /**
  * ks_read_qmu - read 1 pkt data from the QMU.
  * @ks: The chip information
@@ -442,6 +444,7 @@ static void ks_disable_qmu(struct ks_net *ks)
  * 3. read pkt data
  * 4. reset sudo DMA Mode
  */
+#if 0
 static inline void ks_read_qmu(struct ks_net *ks, u16 *buf, u32 len)
 {
    u32 r =  ks->extra_byte & 0x1 ;
@@ -462,13 +465,16 @@ static inline void ks_read_qmu(struct ks_net *ks, u16 *buf, u32 len)
       ioread8(ks->hw_addr);
    ks_inblk(ks, buf, w + 2 + 2);
 
+
    /* 3. read pkt data */
    ks_inblk(ks, buf, ALIGN(len, 4));
 
    /* 4. reset sudo DMA Mode */
    ks_wrreg8(ks, KS_RXQCR, ks->rc_rxqcr);
 }
+#endif
 
+#if 0
 /**
  * ks_rcv - read multiple pkts data from the QMU.
  * @ks: The chip information
@@ -678,6 +684,7 @@ static int ks_net_stop(struct net_device *netdev)
    return 0;
 }
 
+#endif
 
 /**
  * ks_write_qmu - write 1 pkt data to the QMU.
@@ -692,6 +699,7 @@ static int ks_net_stop(struct net_device *netdev)
  * 5. reset sudo DMA mode
  * 6. Wait until pkt is out
  */
+#if 0
 static void ks_write_qmu(struct ks_net *ks, u8 *pdata, u16 len)
 {
    /* start header at txb[0] to align txw entries */
@@ -712,6 +720,7 @@ static void ks_write_qmu(struct ks_net *ks, u8 *pdata, u16 len)
    while (ks_rdreg16(ks, KS_TXQCR) & TXQCR_METFE)
       ;
 }
+
 
 /**
  * ks_start_xmit - transmit packet
@@ -971,8 +980,6 @@ static int ks_set_mac_address(struct net_device *netdev, void *paddr)
    return 0;
 }
 
-#if 0
-
 static int ks_net_ioctl(struct net_device *netdev, struct ifreq *req, int cmd)
 {
    struct ks_net *ks = netdev_priv(netdev);
@@ -1059,6 +1066,7 @@ static const struct ethtool_ops ks_ethtool_ops = {
 
 #endif
 
+#if 0
 /* MII interface controls */
 
 /**
@@ -1234,7 +1242,6 @@ static void ks_setup_int(struct ks_net *ks)
    ks->rc_ier = (IRQ_LCI | IRQ_TXI | IRQ_RXI);
 }  /* ks_setup_int */
 
-#if 0
 
 static int ks_hw_init(struct ks_net *ks)
 {
@@ -1392,7 +1399,7 @@ err_free:
    return err;
 }
 
-#endif
+
 
 static int ks8851_remove(struct platform_device *pdev)
 {
@@ -1424,6 +1431,7 @@ module_param_named(message, msg_enable, int, 0);
 MODULE_PARM_DESC(message, "Message verbosity level (0=none, 31=all)")
 
 
+#endif
 
 
 

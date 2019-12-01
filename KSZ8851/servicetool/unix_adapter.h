@@ -10,7 +10,7 @@
 #define u16 unsigned short
 #define u32 unsigned int
 #define __le16 unsigned short
-#define __iomem
+#define __iomem volatile
 #define ____cacheline_aligned
 
 struct mutex {

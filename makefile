@@ -12,7 +12,7 @@ RANLIB							   = $(CCPATH)/bin/m68k-amigaos-ranlib
 LD                       		= $(CCPATH)/bin/m68k-amigaos-gcc
 SHELL                         = sh
 XDFTOOL								= /usr/local/bin/xdftool
-
+AMIGA_EXPLORER                = $(PWD)/tools/lxamiga.pl
 INC_SRCH_PATH						:= -I$(PROJ_ROOT)/os_includes/sana
 
 CFLAGS								+= -Os \
@@ -31,7 +31,7 @@ ifeq ($(ARCH),)
 	ARCH=000
 endif			
                           
-export CCPATH CC LD CXX CFLAGS LDFLAGS RANLIB LD AOS_INCLUDES OS_INCLUDES CFLAGS ARCH PROJ_ROOT XDFTOOL
+export CCPATH CC LD CXX CFLAGS LDFLAGS RANLIB LD AOS_INCLUDES OS_INCLUDES CFLAGS ARCH PROJ_ROOT XDFTOOL AMIGA_EXPLORER
 
 # Release version: make
 all: 	CFLAGS += -s
@@ -44,6 +44,9 @@ debug:	CFLAGS += -DDEBUG -g
 debug:
 	@$(MAKE) -C KSZ8851/servicetool 
 	@$(MAKE) -C KSZ8851/driver 
+	
+install:
+	@$(MAKE) -C KSZ8851/servicetool install
 
 
 .PHONY: clean

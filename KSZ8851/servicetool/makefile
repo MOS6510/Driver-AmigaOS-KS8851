@@ -36,11 +36,12 @@ LINKER                       = $(CCPATH)/bin/gcc
 AOS_INCLUDES                 = -Iincludes/os-include39/include/include_h 
 OS_INCLUDES                  = -Iincludes -Iincludes/sana -Iincludes/libnix -Iincludes/mui
 PRJ_INCLUDES                 = -I. -IEtherPrefs
-CC_OPTS                      += -Os -fstrength-reduce \
+CC_OPTS                      += -Os \
+										-fstrength-reduce \
                               -nostdinc $(AOS_INCLUDES) -I$(CCPATH)/include -I$(CCPATH)/sys-include $(OS_INCLUDES) $(PRJ_INCLUDES)  \
                               -fno-builtin-printf \
-                              -g \
                               -noixemul \
+                              -std=c99 \
                               -Wall \
                               -fomit-frame-pointer \
                               -m68$(ARCH) \
@@ -57,11 +58,11 @@ ADFIMAGE								= Amiga1200+.adf
 
 .PHONY: all distribution
 
-all: builddir $(BUILDDIR)/ks8851 $(BUILDDIR)/$(ADFIMAGE)
+all: builddir $(BUILDDIR)/ksz8851 $(BUILDDIR)/$(ADFIMAGE)
 
 $(BUILDDIR)/$(ADFIMAGE):
 	@echo "Create ADF image..."
-	@$(XDFTOOL) $@ format "Amiga1200+" + makedir "network" + write $(BUILDDIR)/ks8851 "network"
+	@$(XDFTOOL) $@ format "Amiga1200+" + makedir "network" + write $(BUILDDIR)/ksz8851 "network"
 	@$(XDFTOOL) $@ list
 	
      
@@ -69,9 +70,18 @@ builddir:
 	@echo "Create build directories..."
 	@mkdir -p $(BUILDDIR)
 		
-$(BUILDDIR)/ks8851:	$(OBJECTS_TESTTOOL)
+$(BUILDDIR)/ksz8851:	$(OBJECTS_TESTTOOL)
 		@echo "Linking       " $@
 		@$(LINKER) $^ $(STRIP_OPTS) -o $@ -noixemul -Llibs -O2 -Wl,-Map,$@.map 
+		
+		
+# Installs device on real Amiga via "Amiga Explorer"
+install:
+		$(AMIGA_EXPLORER) -l || true
+		@sleep 1
+		$(AMIGA_EXPLORER) -u RAD:/ksz8851 || true
+		@sleep 1
+		$(AMIGA_EXPLORER) -s $(BUILDDIR)/ksz8851 RAD:/ksz8851	
 		
 
 clean:
