@@ -236,7 +236,7 @@ struct platform_driver {
 
 //Define some functions that are not realy used:
 #define netif_dbg(...)
-#define mdelay(x)
+#define mdelay(x) Delay(x)
 #define likely(x)       __builtin_expect((x),1)
 #define unlikely(x)     __builtin_expect((x),0)
 #define ALIGN(x,a)              __ALIGN_MASK(x,(typeof(x))(a)-1)
