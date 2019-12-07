@@ -81,8 +81,9 @@ uint16_t htons(uint16_t hostshort);
 #define ETH_MAX_FRAME_SIZE 1518
 #define memPoolFree(a) FreeVec(a)
 
+//void printPacket(const uint8_t * buffer, int size);
 
-
+typedef void (*ProcessPacketFunc)(const uint8_t * buffer, int size);
 
 // -------------
 
@@ -531,7 +532,7 @@ uint16_t htons(uint16_t hostshort);
  error_t ksz8851SendPacket(NetInterface *interface,
     const NetBuffer *buffer, size_t offset);
 
- error_t ksz8851ReceivePacket(NetInterface *interface);
+ error_t ksz8851ReceivePacket(NetInterface *interface, ProcessPacketFunc proessFunc);
 
  error_t ksz8851UpdateMacAddrFilter(NetInterface *interface);
 

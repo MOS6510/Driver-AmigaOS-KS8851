@@ -88,8 +88,8 @@
        ISR_RXIS | ISR_RXOIS | ISR_TXPSIS | ISR_RXPSIS | ISR_TXSAIS |
        ISR_RXWFDIS | ISR_RXMPDIS | ISR_LDIS | ISR_EDIS | ISR_SPIBEIS);
 
-    //Configure interrupts as desired
-    ksz8851SetBit(interface, KSZ8851_REG_IER, /*IER_LCIE |*/ IER_TXIE /*| IER_RXIE*/);
+    //Configure interrupts as desired (HP: TODO do not activate until Amiga ISR is installed!)
+    //ksz8851SetBit(interface, KSZ8851_REG_IER, /*IER_LCIE |*/ IER_TXIE /*| IER_RXIE*/);
 
     //Enable TX operation
     ksz8851SetBit(interface, KSZ8851_REG_TXCR, TXCR_TXE);
@@ -259,8 +259,8 @@
        //Process all pending packets
        while(frameCount > 0)
        {
-          //Read incoming packet
-          ksz8851ReceivePacket(interface);
+          //Read incoming packet //TODO: receive method...
+          ksz8851ReceivePacket(interface, NULL);
           //Decrement frame counter
           frameCount--;
        }
@@ -339,10 +339,9 @@
   * @param[in] interface Underlying network interface
   * @return Error code
   **/
-#if 0
- error_t ksz8851ReceivePacket(NetInterface *interface)
+ error_t ksz8851ReceivePacket(NetInterface *interface, ProcessPacketFunc processFunc)
  {
-    size_t n;
+    uint16_t n;
     uint16_t status;
     Ksz8851Context *context;
 
@@ -360,6 +359,7 @@
        {
           //Read received frame byte size from RXFHBCR
           n = ksz8851ReadReg(interface, KSZ8851_REG_RXFHBCR) & RXFHBCR_RXBC_MASK;
+          //printf(" %d ", n);
 
           //Ensure the frame size is acceptable
           if(n > 0 && n <= ETH_MAX_FRAME_SIZE)
@@ -374,7 +374,10 @@
              ksz8851ClearBit(interface, KSZ8851_REG_RXQCR, RXQCR_SDA);
 
              //Pass the packet to the upper layer
-             //nicProcessPacket(interface, context->rxBuffer, n);
+             if (processFunc) {
+
+                processFunc(context->rxBuffer, n);
+             }
 
              //Valid packet received
              return NO_ERROR;
@@ -387,7 +390,6 @@
     //Report an error
     return ERROR_INVALID_PACKET;
  }
-#endif
 
 
  /**
@@ -549,7 +551,7 @@
   * @param[in] address Register address
   * @param[in] mask Bits to set in the target register
   **/
-#if 0
+#if 1
  void ksz8851SetBit(NetInterface *interface, uint8_t address, uint16_t mask)
  {
     uint16_t value;
