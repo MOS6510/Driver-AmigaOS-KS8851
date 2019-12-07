@@ -27,6 +27,7 @@
 									<listOptionValue builtIn="false" value="/opt/amiga/m68k-amigaos/clib2/include"/>
 									<listOptionValue builtIn="false" value="/opt/amiga/m68k-amigaos/libnix/include"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/Amiga1200Plus/os_includes/libnix}&quot;"/>
+									<listOptionValue builtIn="false" value="/opt/amiga/m68k-amigaos/sys-include"/>
 								</option>
 								<option id="gnu.c.compiler.option.preprocessor.def.symbols.252271210" name="Defined symbols (-D)" superClass="gnu.c.compiler.option.preprocessor.def.symbols" useByScannerDiscovery="false" valueType="definedSymbols">
 									<listOptionValue builtIn="false" value="BOOL=u8"/>
@@ -82,6 +83,7 @@
 							<builder buildPath="${workspace_loc:/Amiga1200Plus}" cleanBuildTarget="ARCH=020 clean" id="cdt.managedbuild.builder.gnu.cross.891649608" incrementalBuildTarget="ARCH=020 debug" keepEnvironmentInBuildfile="false" managedBuildOn="false" name="Gnu Make Builder" superClass="cdt.managedbuild.builder.gnu.cross"/>
 							<tool id="cdt.managedbuild.tool.gnu.cross.c.compiler.1743346628" name="Cross GCC Compiler" superClass="cdt.managedbuild.tool.gnu.cross.c.compiler">
 								<option id="gnu.c.compiler.option.include.paths.339948618" name="Include paths (-I)" superClass="gnu.c.compiler.option.include.paths" useByScannerDiscovery="false" valueType="includePath">
+									<listOptionValue builtIn="false" value="/opt/amiga/m68k-amigaos/sys-include"/>
 									<listOptionValue builtIn="false" value="/opt/amiga/m68k-amigaos/ndk-include"/>
 									<listOptionValue builtIn="false" value="/opt/amiga/m68k-amigaos/clib2/include"/>
 									<listOptionValue builtIn="false" value="/opt/amiga/m68k-amigaos/libnix/include"/>

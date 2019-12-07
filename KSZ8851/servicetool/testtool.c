@@ -16,6 +16,7 @@
 #include <stdlib.h>
 
 #include "../servicetool/ks8851.h"
+#include "ksz8851.h"
 #include "../servicetool/unix_adapter.h"
 
 int build_number = 1;
@@ -35,65 +36,71 @@ static const char * VERSION = "1.2";
 #define TEST_ENTERED() printf("%s...", __func__);
 #define TEST_LEAVE(a)  printf("%s\n", (a) ? "success" : "failed!");
 
+/*
 typedef enum  {
    NO_ERROR = 0,
    NO_CHIP_FOUND,
    ERROR_INVALID_PACKET,
    ERROR_INVALID_LENGTH,
    ERROR_FAILURE
-} error_t;
+} error_t;*/
 
 // ########################################## EXTERNALS #####################################################
 
 //Dummy forward private linux driver struct. Real defined in the driver itself.
 struct ks_net;
 
+#if 1
 #define BE3             0x8000      /* Byte Enable 3 */
 #define BE2             0x4000      /* Byte Enable 2 */
 #define BE1             0x2000      /* Byte Enable 1 */
 #define BE0             0x1000      /* Byte Enable 0 */
+#endif
 
-extern void ks_wrreg16(struct ks_net *ks, int offset, u16 value);
-extern u16 ks_rdreg16(struct ks_net *ks, int offset);
-extern void ks_wrreg16(struct ks_net *ks, int offset, u16 value);
-extern u8 ks_rdreg8(struct ks_net *ks, int offset);
+//extern void ks_wrreg16(struct ks_net *ks, int offset, u16 value);
+//extern u16 ks_rdreg16(struct ks_net *ks, int offset);
+//extern void ks_wrreg16(struct ks_net *ks, int offset, u16 value);
+//extern u8 ks_rdreg8(struct ks_net *ks, int offset);
 
-void dumpRegister8BitMode(struct ks_net * ks);
-u8 KSZ8851ReadReg8(struct ks_net * ks, int offset);
-void ksz8851_SoftReset(struct ks_net *ks, unsigned op);
-void ksz8851WriteFifo(struct ks_net * ks , const u8 * data, size_t length);
+void dumpRegister8BitMode(NetInterface * ks);
+u8 KSZ8851ReadReg8(NetInterface * ks, int offset);
+//void ksz8851_SoftReset(struct ks_net *ks, unsigned op);
+//void ksz8851WriteFifo(struct ks_net * ks , const u8 * data, size_t length);
 
-extern struct ks_net * ks8851_init();
+//extern struct ks_net * ks8851_init();
 void done(void);
 
 #define TX_CTRL_TXIC      0x8000
 #define TX_CTRL_TXFID     0x003F
 #define TXMIR_TXMA_MASK   0x1FFF
 
+#define ETH_MAX_FRAME_SIZE   1518
 
+/*
 typedef struct {
 
 } NetBuffer;
-
+*/
+/*
 typedef struct
  {
     u16 controlWord;
     u16 byteCount;
  } Ksz8851TxHeader;
-
+*/
  u32 frameId = 0;
 
 
  /**
   * @brief RX packet header
   **/
-
+/*
  typedef struct
  {
     u16 statusWord;
     u16 byteCount;
  } Ksz8851RxHeader;
-
+*/
 
 /**
  * Should 16 bit access be swapped the the software?
@@ -107,12 +114,24 @@ BOOL switchChipToLittleEndian = false;
  * Swaps a 16 bit value...0x1234 => 0x3412
  * @param value
  */
-inline u16 swap(u16 value)
+u16 swap(u16 value)
 {
    register u16 h = (value >> 8) & 0xff;
    register u16 l = value & 0xff;
    return (l << 8) | h;
 }
+int netBufferGetLength(const NetBuffer * buffer) {
+   return buffer->len;
+}
+
+void netBufferRead(const uint8_t * srcBuffer, const NetBuffer * buffer, int offset, int length) {
+   //TODO:
+}
+
+uint16_t htons(uint16_t hostshort) {
+   return hostshort;
+}
+
 
 /**
  * Support function writing register
@@ -171,7 +190,7 @@ const bool dwordSwapped = false;
  * @param offset
  * @return
  */
-u8 KSZ8851ReadReg8(struct ks_net * ks, int offset) {
+u8 KSZ8851ReadReg8(NetInterface * ks, int offset) {
    u8 result = 0;
    /**
     * Some miracle things happen when chip is set to big endian mode:
@@ -232,7 +251,9 @@ u8 KSZ8851ReadReg8(struct ks_net * ks, int offset) {
  * @param ks
  * @param offset
  */
-u16 ksz8851ReadReg16(struct ks_net * ks, int offset) {
+uint16_t ksz8851ReadReg(NetInterface *interface, uint8_t offset)
+//u16 ksz8851ReadReg(struct ks_net * ks, int offset)
+{
    assert((offset & 1) == 0);
 
    if (offset & 2) {
@@ -248,7 +269,9 @@ u16 ksz8851ReadReg16(struct ks_net * ks, int offset) {
  * @param ks
  * @param offset
  */
-u16 ksz8851WriteReg16(struct ks_net * ks, int offset, u16 value) {
+void ksz8851WriteReg(NetInterface *interface, uint8_t offset, uint16_t value)
+//u16 ksz8851WriteReg(struct ks_net * ks, int offset, u16 value)
+{
    assert((offset & 1) == 0);
 
    if (offset & 2) {
@@ -256,29 +279,30 @@ u16 ksz8851WriteReg16(struct ks_net * ks, int offset, u16 value) {
    } else {
       *REG_CMD = offset | (dwordSwapped ? ( BE2 | BE3) : (BE0 | BE1));
    }
-   return *REG_DATA = value;
+   *REG_DATA = value;
 }
 
-void ksz8851SetBit(struct ks_net * ks, u8 address, u16 mask)
+void ksz8851SetBit(NetInterface *interface, uint8_t address, uint16_t mask)
+//void ksz8851SetBit(struct ks_net * ks, u8 address, u16 mask)
  {
     u16 value;
     //Read current register value
-    value = ksz8851ReadReg16(ks, address);
+    value = ksz8851ReadReg(interface, address);
     //Set specified bits
-    ksz8851WriteReg16(ks, address, value | mask);
+    ksz8851WriteReg(interface, address, value | mask);
  }
 
- void ksz8851ClearBit(struct ks_net * ks, u8 address, u16 mask)
+ void ksz8851ClearBit(NetInterface *interface, uint8_t address, uint16_t mask)
  {
     u16 value;
     //Read current register value
-    value = ksz8851ReadReg16(ks, address);
+    value = ksz8851ReadReg(interface, address);
     //Clear specified bits
-    ksz8851WriteReg16(ks, address, value & ~mask);
+    ksz8851WriteReg(interface, address, value & ~mask);
  }
 
-void printCCR(struct ks_net * ks) {
-   u16 val = ks_rdreg16(ks, KS_CCR);
+void printCCR(NetInterface* ks) {
+   u16 val = ksz8851ReadReg(ks, KS_CCR);
    printf("ChipConfReg: 0x%04x (endianMode=%s,EEPROM=%s,8bit=%s,16bit=%s,48pin=%s)\n",
          val,
          val & CCR_LE     ? "LE" : "BE",
@@ -293,7 +317,7 @@ void printCCR(struct ks_net * ks) {
  * Dump registers in 8 bit mode
  * @param ks
  */
-void dumpRegister8BitMode(struct ks_net * ks) {
+void dumpRegister8BitMode(NetInterface * ks) {
    int i;
    printf("\nRegister dump ( 256 x 8-bit ):\n");
    for (i = 0; i < 256; i++) {
@@ -312,7 +336,7 @@ void dumpRegister8BitMode(struct ks_net * ks) {
  * Dump registers in 16 bit mode
  * @param ks
  */
-void dumpRegister16BitMode(struct ks_net * ks) {
+void dumpRegister16BitMode(NetInterface *interface) {
    int i;
    printf("\nRegister dump ( 128 x 16-bit ):\n");
    for (i = 0; i < 256; i+=2) {
@@ -322,7 +346,7 @@ void dumpRegister16BitMode(struct ks_net * ks) {
          }
          printf("%02x: ", i);
       }
-      printf("%04x ", ksz8851ReadReg16(ks, i));
+      printf("%04x ", ksz8851ReadReg(interface, i));
    }
    printf("\n");
 }
@@ -331,10 +355,13 @@ void dumpRegister16BitMode(struct ks_net * ks) {
  * Init the ethernet chip (inclusive probing).
  * @return NO_ERROR if no error occurred
  */
-error_t ksz8851Init(struct ks_net * ks) {
+#if 0
+error_t ksz8851Init(NetInterface *interface)
+//error_t ksz8851Init(struct ks_net * ks)
+{
 
    printf("Probing chip: ");
-   u16 val = ks_rdreg16(ks, KS_CIDER);
+   u16 val = ksz8851ReadReg(interface, KS_CIDER);
    if ((val & ~CIDER_REV_MASK) != CIDER_ID) {
       printf(" FAILED! Value on register 0xc0 is 0x%04x but should be 0x887x)\n", (val & ~CIDER_REV_MASK));
       return NO_CHIP_FOUND;
@@ -342,108 +369,114 @@ error_t ksz8851Init(struct ks_net * ks) {
       printf("ok!\n");
    }
 
-   //First: soft reset:
+   //First: soft reset (REMOVE strange things happens afterwards...)
    //ksz8851_SoftReset(ks, GRR_GSR);
 
    //Packets shorter than 64 bytes are padded and the CRC is automatically generated
-   ksz8851WriteReg16(ks, KS_TXCR, TXCR_TXFCE | TXCR_TXPE | TXCR_TXCRC);
+   ksz8851WriteReg(interface, KS_TXCR, TXCR_TXFCE | TXCR_TXPE | TXCR_TXCRC);
 
    //Automatically increment TX data pointer
-   ksz8851WriteReg16(ks, KS_TXFDPR, TXFDPR_TXFPAI);
+   ksz8851WriteReg(interface, KS_TXFDPR, TXFDPR_TXFPAI);
 
    //Configure address filtering (but not started yet) (Receive Control Register 1) RXCR1_RXAE
    //ksz8851WriteReg16(ks, KS_RXCR1, RXCR1_RXPAFMA | RXCR1_RXFCE | RXCR1_RXBE | RXCR1_RXME | RXCR1_RXUE);
-   //HP: Enable to receive EVERY packet
-   ksz8851WriteReg16(ks, KS_RXCR1, RXCR1_RXAE);
+   //HP: Enable to receive All types of packets with or without errors...
+   ksz8851WriteReg(interface, KS_RXCR1, RXCR1_RXAE);
 
    //No checksum verification
-   ksz8851WriteReg16(ks, KS_RXCR2, RXCR2_SRDBL_FRAME | RXCR2_IUFFP | RXCR2_RXIUFCEZ); // orig: RXCR2_SRDBL2 ???
+   ksz8851WriteReg(interface, KS_RXCR2, RXCR2_SRDBL_FRAME | RXCR2_IUFFP | RXCR2_RXIUFCEZ); // orig: RXCR2_SRDBL2 ???
 
    //Enable automatic RXQ frame buffer dequeue
-   ksz8851WriteReg16(ks, KS_RXQCR, RXQCR_RXFCTE | RXQCR_ADRFE);
+   ksz8851WriteReg(interface, KS_RXQCR, RXQCR_RXFCTE | RXQCR_ADRFE);
 
    //Automatically increment RX data pointer
-   ksz8851WriteReg16(ks, KS_RXFDPR, RXFDPR_RXFPAI);
+   ksz8851WriteReg(interface, KS_RXFDPR, RXFDPR_RXFPAI);
 
    //Configure receive frame count threshold
-   ksz8851WriteReg16(ks, KS_RXFCTR, 1);
+   ksz8851WriteReg(interface, KS_RXFCTR, 1);
 
    //Force link in half-duplex if auto-negotiation failed
-   ksz8851ClearBit(ks, KS_P1CR, P1CR_FORCEFDX);
+   ksz8851ClearBit(interface, KS_P1CR, P1CR_FORCEFDX);
 
-   //Restart auto-negotiation (seems to need time time, stops the links for some amount of time)
-   ksz8851SetBit(ks, KS_P1CR, P1CR_RESTARTAN);
+   //Restart auto-negotiation
+   //ksz8851SetBit(ks, KS_P1CR, P1CR_RESTARTAN);
 
-   //Clear interrupt flags
-   ksz8851SetBit(ks, KS_ISR, IRQ_LCI | IRQ_TXI |
+   //Clear all interrupt flags
+   ksz8851SetBit(interface, KS_ISR, 0xffff);
+   /*
+   ksz8851SetBit(interface, KS_ISR, IRQ_LCI | IRQ_TXI |
          IRQ_RXI | IRQ_RXOI | IRQ_TXPSI | IRQ_RXPSI | IRQ_TXSAI |
-         IRQ_RXWFDI | IRQ_RXMPDI | IRQ_LDI | IRQ_EDI | IRQ_SPIBEI);
+         IRQ_RXWFDI | IRQ_RXMPDI | IRQ_LDI | IRQ_EDI | IRQ_SPIBEI);*/
 
    //Configure interrupts as desired
    //ksz8851SetBit(ks, KS_IER, IRQ_LCI | IRQ_TXI | IRQ_RXI);
 
    //Enable TX operation
-   ksz8851SetBit(ks, KS_TXCR, TXCR_TXE);
+   ksz8851SetBit(interface, KS_TXCR, TXCR_TXE);
 
    //Enable RX operation
-   ksz8851SetBit(ks, KS_RXCR1, RXCR1_RXE);
+   ksz8851SetBit(interface, KS_RXCR1, RXCR1_RXE);
 
    //Successful initialization
    return NO_ERROR;
 }
+#endif
 
-#define ETH_MAX_FRAME_SIZE   1518
 
-
-void ksz8851_SoftReset(struct ks_net *ks, unsigned op)
+void ksz8851_SoftReset(NetInterface *interface, unsigned op)
 {
    /* Disable interrupt first */
-   ksz8851WriteReg16(ks, KS_IER, 0x0000);
-   ksz8851WriteReg16(ks, KS_GRR, op);
-   mdelay(10); /* wait a short time to effect reset */
-   ksz8851WriteReg16(ks, KS_GRR, 0);
-   mdelay(1);  /* wait for condition to clear */
+   ksz8851WriteReg(interface, KS_IER, 0x0000);
+   ksz8851WriteReg(interface, KS_GRR, op);
+   Delay(50);
+   //mdelay(50); /* wait a short time to effect reset */
+   ksz8851WriteReg(interface, KS_GRR, 0);
+   //mdelay(50);  /* wait for condition to clear */
+   Delay(50);
+   //Wait for reset finished!
+   while (ksz8851ReadReg(interface, KS_GRR) != 0) {
+      printf("Wait reset...\n");
+      Delay(50);
+   }
 }
-
 
 /**
  * Read packets
  * @param ks
  * @return
  */
-error_t ksz8851ReceivePacket(struct ks_net * ks)
+error_t ksz8851ReceivePacket(NetInterface *interface)
  {
     size_t n;
-    u16 status;
+    u16 statusHdr;
     u16 isr;
 
     //Read received frame status from RXFHSR
-    status = ksz8851ReadReg16(ks, KS_RXFHSR);
-    isr    = ksz8851ReadReg16(ks, KS_ISR);
-
-    printf("KS_RXFHSR = 0x%04x, ISR = 0x%04x  \n", status, isr);
+    statusHdr = ksz8851ReadReg(interface, KS_RXFHSR);
+    isr       = ksz8851ReadReg(interface, KS_ISR);
+    //printf("KS_RXFHSR = 0x%04x, ISR = 0x%04x  \n", statusHdr, isr);
 
     //Make sure the frame is valid
-    if(status & RXFSHR_RXFV)
+    if(statusHdr & RXFSHR_RXFV)
     {
-       printf("Something there...\n");
+       printf("Something to read...\n");
        //Check error flags
-       if(!(status & (RXFSHR_RXMR | RXFSHR_RXFTL | RXFSHR_RXRF | RXFSHR_RXCE)))
+       if(!(statusHdr & (RXFSHR_RXMR | RXFSHR_RXFTL | RXFSHR_RXRF | RXFSHR_RXCE)))
        {
-          printf("Something there...2\n");
+          printf("Something to read...2\n");
 
           //Read received frame byte size from RXFHBCR
-          n = ksz8851ReadReg16(ks, KS_RXFHBCR) & RXFHBCR_CNT_MASK;
+          n = ksz8851ReadReg(interface, KS_RXFHBCR) & RXFHBCR_CNT_MASK;
 
           //Ensure the frame size is acceptable
           if(n > 0 && n <= ETH_MAX_FRAME_SIZE)
           {
-             printf("Something there...3\n");
+             printf("Something to read...3\n");
 
              //Reset QMU RXQ frame pointer to zero
-             ksz8851WriteReg16(ks, KS_RXFDPR, RXFDPR_RXFPAI);
+             ksz8851WriteReg(interface, KS_RXFDPR, RXFDPR_RXFPAI);
              //Enable RXQ read access
-             ksz8851SetBit(ks, KS_RXQCR, RXQCR_SDA);
+             ksz8851SetBit(interface, KS_RXQCR, RXQCR_SDA);
 
              //Read data
              //ksz8851ReadFifo(ks, context->rxBuffer, n);
@@ -451,7 +484,7 @@ error_t ksz8851ReceivePacket(struct ks_net * ks)
              //printf("read something...\n");
 
              //End RXQ read access
-             ksz8851ClearBit(ks, KS_RXQCR, RXQCR_SDA);
+             ksz8851ClearBit(interface, KS_RXQCR, RXQCR_SDA);
 
              //Pass the packet to the upper layer
              //nicProcessPacket(ks, context->rxBuffer, n);
@@ -459,11 +492,11 @@ error_t ksz8851ReceivePacket(struct ks_net * ks)
              //Valid packet received
              return NO_ERROR;
           } else {
-             printf("NAK 3 \n");
+             //printf("NAK 3 \n");
           }
        }
        else {
-          printf("NAK 2 \n");
+          //printf("NAK 2 \n");
        }
     }
     else {
@@ -478,7 +511,9 @@ error_t ksz8851ReceivePacket(struct ks_net * ks)
  }
 
 
-error_t ksz8851SendPacket(struct ks_net * ks, const NetBuffer * buffer, size_t offset)
+#if 0
+error_t ksz8851SendPacket(NetInterface *interface, const NetBuffer *buffer, size_t offset)
+//error_t ksz8851SendPacket(struct ks_net * ks, const NetBuffer * buffer, size_t offset)
  {
     size_t n;
     size_t length = 1518; //85;
@@ -509,7 +544,7 @@ error_t ksz8851SendPacket(struct ks_net * ks, const NetBuffer * buffer, size_t o
     }
 
     //Get the amount of free memory available in the TX FIFO
-    n = ksz8851ReadReg16(ks, KS_TXMIR) & TXMIR_TXMA_MASK;
+    n = ksz8851ReadReg(interface, KS_TXMIR) & TXMIR_TXMA_MASK;
 
     //Make sure enough memory is available
     if((length + 8) > n)
@@ -527,22 +562,24 @@ error_t ksz8851SendPacket(struct ks_net * ks, const NetBuffer * buffer, size_t o
     header.byteCount = length;
 
     //Enable TXQ write access
-    ksz8851SetBit(ks, KS_RXQCR, RXQCR_SDA);
+    ksz8851SetBit(interface, KS_RXQCR, RXQCR_SDA);
     //Write TX packet header
-    ksz8851WriteFifo(ks, (u8 *) &header, sizeof(Ksz8851TxHeader));
+    ksz8851WriteFifo(interface, (u8 *) &header, sizeof(Ksz8851TxHeader));
     //Write data
-    ksz8851WriteFifo(ks, txBuffer, length);
+    ksz8851WriteFifo(interface, txBuffer, length);
     //End TXQ write access
-    ksz8851ClearBit(ks, KS_RXQCR, RXQCR_SDA);
+    ksz8851ClearBit(interface, KS_RXQCR, RXQCR_SDA);
 
     //Start transmission
-    ksz8851SetBit(ks, KS_TXQCR, TXQCR_METFE);
+    ksz8851SetBit(interface, KS_TXQCR, TXQCR_METFE);
 
     //Successful processing
     return NO_ERROR;
  }
+#endif
 
-void ksz8851WriteFifo(struct ks_net * ks , const u8 * data, size_t length)
+/*
+void ksz8851WriteFifo(NetInterface *interface, const uint8_t *data, size_t length)
 {
     u16 i;
 
@@ -553,7 +590,7 @@ void ksz8851WriteFifo(struct ks_net * ks , const u8 * data, size_t length)
     //Maintain alignment to 4-byte boundaries
     for(; i % 4; i+=2)
        *REG_DATA = 0x0000;
- }
+ }*/
 
 
 
@@ -561,7 +598,7 @@ void ksz8851WriteFifo(struct ks_net * ks , const u8 * data, size_t length)
  * Print current MAC address. TODO: I'm not sure that the direction is correct...
  * @param ks
  */
-void printMAC(struct ks_net * ks)
+void printMAC(NetInterface * ks)
 {
    u8 mac[6];
 
@@ -580,8 +617,8 @@ void printMAC(struct ks_net * ks)
  * Display Link status
  * @param ks
  */
-void printLinkStatus(struct ks_net * ks) {
-   u16 val = ksz8851ReadReg16(ks, KS_P1SR);
+void printLinkStatus(NetInterface * ks) {
+   u16 val = ksz8851ReadReg(ks, KS_P1SR);
    printf("Ethernet Link Status: %s", val & P1SR_LINK_GOOD ? "UP" : "DOWN");
    if (val & P1SR_LINK_GOOD) {
       printf(" (%s, %s)", //
@@ -597,25 +634,27 @@ void printLinkStatus(struct ks_net * ks) {
  * prints some MIB counter...
  * @param ks
  */
-void printMIB(struct ks_net * ks) {
+void printMIB(NetInterface * ks) {
 
    //"MIB0" => "Rx octet count including bad packets" (32bit)
    u8 MIBRegister = 0;
    for (MIBRegister = 0; MIBRegister <= 0x00 /*0x1f*/; MIBRegister++) {
-      ksz8851WriteReg16(ks, KS_IACR, MIBRegister);
-      u32 h = ksz8851ReadReg16(ks, KS_IAHDR);
-      u32 l = ksz8851ReadReg16(ks, KS_IADLR);
+      ksz8851WriteReg(ks, KS_IACR, MIBRegister);
+      u32 h = ksz8851ReadReg(ks, KS_IAHDR);
+      u32 l = ksz8851ReadReg(ks, KS_IADLR);
       u32 val = h << 16 | l;
       printf("MIB 0x%02x: 0x%08lx\n", MIBRegister, val);
    }
 }
+Ksz8851Context context;
 
-struct ks_net * ks = NULL;
+static NetInterface interface = { .nicContext = &context };
 
 int main(int argc, char * argv[])
 {
    bool looping = false;
    bool send = false;
+   bool receive = false;
 
    atexit(done);
 
@@ -655,7 +694,11 @@ int main(int argc, char * argv[])
 
          if (strcmp(argv[i], "send") == 0) {
                     send = true;
-                 }
+         }
+
+         if (strcmp(argv[i], "receive") == 0) {
+                             receive = true;
+                  }
       }
    }
    else
@@ -679,7 +722,7 @@ int main(int argc, char * argv[])
 
    {
       //Init network structure
-      ks = ks8851_init();
+      //ks = ks8851_init();
 
       if (swappingDataRegValue) {
          printf("%s-tool is swapping every 16 bit data during chip access.\n", argv[0]);
@@ -688,30 +731,30 @@ int main(int argc, char * argv[])
       //Set chip to big endian?
       if (switchChipToBigEndian) {
          printf("Switching chip to big endian mode.\n");
-         u16 oldValue = ks_rdreg16(ks, KS_RXFDPR);
-         ks_wrreg16(ks, KS_RXFDPR, oldValue | RXFDPR_EMS); //Bit 11 = 1   => BigEndian
+         u16 oldValue = ksz8851ReadReg(&interface, KS_RXFDPR);
+         ksz8851WriteReg(&interface, KS_RXFDPR, oldValue | RXFDPR_EMS); //Bit 11 = 1   => BigEndian
       }
 
       //Set chip to little endian?
       if (switchChipToLittleEndian) {
          printf("Switching chip to little endian mode.\n");
-         u16 oldValue = ks_rdreg16(ks, KS_RXFDPR);
-         ks_wrreg16(ks, KS_RXFDPR, oldValue & ~RXFDPR_EMS); //Bit 11 = 0  => LittleEndian
+         u16 oldValue = ksz8851ReadReg(&interface, KS_RXFDPR);
+         ksz8851WriteReg(&interface, KS_RXFDPR, oldValue & ~RXFDPR_EMS); //Bit 11 = 0  => LittleEndian
       }
 
       //
       // Probe for chip
       //
-      error_t probing = ksz8851Init(ks);
+      error_t probing = ksz8851Init(&interface);
       if (probing == NO_ERROR)
       {
-         printCCR(ks);
-         printMAC(ks);
+         printCCR(&interface);
+         printMAC(&interface);
 
          //Sending packets???
          if (send) {
             while(1) {
-               if ( NO_ERROR == ksz8851SendPacket(ks,NULL,0)) {
+               if ( NO_ERROR == ksz8851SendPacket(&interface,NULL,0)) {
                   printf("Pkt send...\n");
                } else {
                   printf("Pkt send failed!\n");
@@ -719,45 +762,58 @@ int main(int argc, char * argv[])
             }
          }
 
-         //Reporting endless:
+         if (receive) {
+            printf("Receiving...\n");
+            while (1) {
+               ksz8851ReceivePacket(&interface);
+               Delay(12);
+            }
+         }
+
+         //Processing evnets (Polling):
          do {
 
             //report link status
-            printLinkStatus(ks);
+            printLinkStatus(&interface);
 
-            //
-            // Check for incoming packets (poll)...
-            //
-            /*if (NO_ERROR == ksz8851ReceivePacket(ks)) {
-               printf("\nRead a packet!\n\n");
-            }*/
             {
-               u16 status = ksz8851ReadReg16(ks, KS_RXFHSR);
-               printf("KS_RXFHSR = 0x%04x\n", status);
 
                //Service all interrupts: (polling)
-               u16 isr = ksz8851ReadReg16(ks, KS_ISR);
+               u16 isr = ksz8851ReadReg(&interface, KS_ISR);
                printf("KS_ISR    = 0x%04x  \n", isr);
                if (isr != 0) {
                   //"Link change" interrupt?
                   if (isr & IRQ_LCI) {
                      printf("                                            Link Change Interrupt detected!\n");
-                     ksz8851SetBit(ks, KS_ISR, IRQ_LCI); //ACK with set same to 1
+                     ksz8851SetBit(&interface, KS_ISR, IRQ_LCI); //ACK with set same to 1
                   }
                   //"Wakeup from linkup" interrupt?
                   if (isr & IRQ_LDI) {
                      printf("                                            Wakeup from linkup detected!\n\n");
-                     ksz8851SetBit(ks, KS_PMECR, 0x2 << 2); //clear event with only PMECR "0010" => [5:2]
+                     ksz8851SetBit(&interface, KS_PMECR, 0x2 << 2); //clear event with only PMECR "0010" => [5:2]
                   }
                   continue;
                }
 
                //Print some MIBs
-               printMIB(ks);
+               //printMIB(ks);
+
+               //Check "RECEIVE FRAME HEADER STATUS REGISTER"...
+               //u16 readStatus = ksz8851ReadReg16(ks, KS_RXFHSR);
+               //printf("KS_RXFHSR = 0x%04x\n", readStatus);
+
+
+               //RX FRAME COUNT AND THRESHOLD REGISTER
+               //u16 frameCounter = ksz8851ReadReg16(ks, KS_RXFCTR);
+               //printf("KS_RXFCTR = 0x%04x\n", frameCounter);
+
+               //Read FRAME HEADER BYTE COUNT REGISTER...
+               //u16 pktLength = ksz8851ReadReg16(ks, KS_RXFHBCR);
+               //printf("KS_RXFHBCR= 0x%04x\n", pktLength);
             }
 
             //3 cursor up
-            printf("\033[4A");
+            printf("\033[1A");
 
             Delay(12.5);
 
@@ -772,6 +828,6 @@ void done(void) {
    //
    // Dump registers...
    //
-   dumpRegister8BitMode(ks);
-   dumpRegister16BitMode(ks);
+   //dumpRegister8BitMode(&interface);
+   dumpRegister16BitMode(&interface);
 }

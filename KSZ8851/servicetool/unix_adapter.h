@@ -5,6 +5,10 @@
  * Defining some stuff to make the linux driver compile for AmigaOS.
  */
 #include <string.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <stdlib.h>
+
 
 #define u8 unsigned char
 #define u16 unsigned short
@@ -116,7 +120,7 @@ void iowrite16(u16 value, void __iomem *addr);
 #define netdev_warn(...)
 
 #define SET_NETDEV_DEV(a,b)
-#define ENOMEM 1
+//#define ENOMEM 1
 #define alloc_etherdev(size) (0l)
 #define netdev_priv(net_device) (0l)
 
@@ -124,7 +128,7 @@ void iowrite16(u16 value, void __iomem *addr);
 /*\
    netdev_hw_addr_list_for_each(ha, &(dev)->mc)*/
 
-#define bool u8
+//#define bool u8
 enum probe_type {
    DUMMY = 1
 };

@@ -1439,6 +1439,7 @@ MODULE_PARM_DESC(message, "Message verbosity level (0=none, 31=all)")
  * HP: Q&D: Init stuff for AmigaOS
  * @return
  */
+/*
 struct ks_net * ks8851_init()
 {
    //Init network structure
@@ -1447,6 +1448,6 @@ struct ks_net * ks8851_init()
    ks.hw_addr     = (u16*)(ETHERNET_BASE_ADDRESS + KS8851_REG_DATA_OFFSET);
    ks.hw_addr_cmd = (u16*)(ETHERNET_BASE_ADDRESS + KS8851_REG_CMD_OFFSET );
    return &ks;
-}
+}*/
 
 

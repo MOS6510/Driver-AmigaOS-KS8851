@@ -29,28 +29,28 @@
 
 #define KS_EEPCR           0x22
 #define EEPCR_EESRWA          (1 << 5)
-#define EEPCR_EESA            (1 << 4)
-#define EEPCR_EESB            (1 << 3)
+//#define EEPCR_EESA            (1 << 4)
+//#define EEPCR_EESB            (1 << 3)
 #define EEPCR_EEDO            (1 << 2)
 #define EEPCR_EESCK           (1 << 1)
 #define EEPCR_EECS            (1 << 0)
 
 #define KS_MBIR               0x24
-#define MBIR_TXMBF            (1 << 12)
-#define MBIR_TXMBFA           (1 << 11)
-#define MBIR_RXMBF            (1 << 4)
-#define MBIR_RXMBFA           (1 << 3)
+//#define MBIR_TXMBF            (1 << 12)
+//#define MBIR_TXMBFA           (1 << 11)
+//#define MBIR_RXMBF            (1 << 4)
+//#define MBIR_RXMBFA           (1 << 3)
 
 #define KS_GRR             0x26
 #define GRR_QMU               (1 << 1)
 #define GRR_GSR               (1 << 0)
 
 #define KS_WFCR               0x2A
-#define WFCR_MPRXE            (1 << 7)
-#define WFCR_WF3E          (1 << 3)
-#define WFCR_WF2E          (1 << 2)
-#define WFCR_WF1E          (1 << 1)
-#define WFCR_WF0E          (1 << 0)
+//#define WFCR_MPRXE            (1 << 7)
+//#define WFCR_WF3E          (1 << 3)
+//#define WFCR_WF2E          (1 << 2)
+//#define WFCR_WF1E          (1 << 1)
+//#define WFCR_WF0E          (1 << 0)
 
 #define KS_WF0CRC0            0x30
 #define KS_WF0CRC1            0x32
@@ -81,25 +81,25 @@
 #define KS_WF3BM3          0x6A
 
 #define KS_TXCR               0x70
-#define TXCR_TCGICMP          (1 << 8)
+/*#define TXCR_TCGICMP          (1 << 8)
 #define TXCR_TCGUDP           (1 << 7)
 #define TXCR_TCGTCP           (1 << 6)
 #define TXCR_TCGIP            (1 << 5)
 #define TXCR_FTXQ          (1 << 4)
 #define TXCR_TXFCE            (1 << 3)
-#define TXCR_TXPE          (1 << 2)
+#define TXCR_TXPE          (1 << 2)*/
 #define TXCR_TXCRC            (1 << 1)
-#define TXCR_TXE           (1 << 0)
+//#define TXCR_TXE           (1 << 0)
 
 #define KS_TXSR               0x72
-#define TXSR_TXLC          (1 << 13)
-#define TXSR_TXMC          (1 << 12)
+//#define TXSR_TXLC          (1 << 13)
+//#define TXSR_TXMC          (1 << 12)
 #define TXSR_TXFID_MASK          (0x3f << 0)
 #define TXSR_TXFID_SHIFT         (0)
 #define TXSR_TXFID_GET(_v)       (((_v) >> 0) & 0x3f)
 
 #define KS_RXCR1           0x74
-#define RXCR1_FRXQ            (1 << 15)
+/*#define RXCR1_FRXQ            (1 << 15)
 #define RXCR1_RXUDPFCC           (1 << 14)
 #define RXCR1_RXTCPFCC           (1 << 13)
 #define RXCR1_RXIPFCC            (1 << 12)
@@ -112,7 +112,7 @@
 #define RXCR1_RXUE            (1 << 5)
 #define RXCR1_RXAE            (1 << 4)
 #define RXCR1_RXINVF          (1 << 1)
-#define RXCR1_RXE          (1 << 0)
+#define RXCR1_RXE          (1 << 0)*/
 
 #define KS_RXCR2           0x76
 #define RXCR2_SRDBL_MASK         (0x7 << 5)  /* KSZ8851SNL    */
@@ -122,11 +122,11 @@
 #define RXCR2_SRDBL_16B          (0x2 << 5)  /* KSZ8851SNL    */
 #define RXCR2_SRDBL_32B          (0x3 << 5)  /* KSZ8851SNL    */
 #define RXCR2_SRDBL_FRAME        (0x4 << 5)  /* KSZ8851SNL    */
-#define RXCR2_IUFFP           (1 << 4)
+/*#define RXCR2_IUFFP           (1 << 4)
 #define RXCR2_RXIUFCEZ           (1 << 3)
 #define RXCR2_UDPLFE          (1 << 2)
 #define RXCR2_RXICMPFCC          (1 << 1)
-#define RXCR2_RXSAF           (1 << 0)
+#define RXCR2_RXSAF           (1 << 0)*/
 
 #define KS_TXMIR           0x78
 
@@ -149,12 +149,12 @@
 #define RXFHBCR_CNT_MASK         (0xfff << 0)
 
 #define KS_TXQCR           0x80
-#define TXQCR_AETFE           (1 << 2)    /* KSZ8851SNL    */
-#define TXQCR_TXQMAM          (1 << 1)
-#define TXQCR_METFE           (1 << 0)
+//#define TXQCR_AETFE           (1 << 2)    /* KSZ8851SNL    */
+//#define TXQCR_TXQMAM          (1 << 1)
+//#define TXQCR_METFE           (1 << 0)
 
 #define KS_RXQCR           0x82
-#define RXQCR_RXDTTS          (1 << 12)
+/*#define RXQCR_RXDTTS          (1 << 12)
 #define RXQCR_RXDBCTS            (1 << 11)
 #define RXQCR_RXFCTS          (1 << 10)
 #define RXQCR_RXIPHTOE           (1 << 9)
@@ -163,19 +163,20 @@
 #define RXQCR_RXFCTE          (1 << 5)
 #define RXQCR_ADRFE           (1 << 4)
 #define RXQCR_SDA          (1 << 3)
-#define RXQCR_RRXEF           (1 << 0)
+#define RXQCR_RRXEF           (1 << 0)*/
 
 #define KS_TXFDPR          0x84
-#define TXFDPR_TXFPAI            (1 << 14)
+//#define TXFDPR_TXFPAI            (1 << 14)
 #define TXFDPR_TXFP_MASK         (0x7ff << 0)
 #define TXFDPR_TXFP_SHIFT        (0)
 
 #define KS_RXFDPR          0x86
-#define RXFDPR_RXFPAI            (1 << 14)
+//#define RXFDPR_RXFPAI            (1 << 14)
 #define RXFDPR_WST            (1 << 12)   /* KSZ8851-16MLL */
 #define RXFDPR_EMS            (1 << 11)   /* KSZ8851-16MLL */
 #define RXFDPR_RXFP_MASK         (0x7ff << 0)
 #define RXFDPR_RXFP_SHIFT        (0)
+
 
 #define KS_RXDTTR          0x8C
 #define KS_RXDBCTR            0x8E
@@ -289,7 +290,7 @@
 #define P1SR_OP_FDX           (1 << 9)
 #define P1SR_OP_MDI           (1 << 7)
 #define P1SR_AN_DONE          (1 << 6)
-#define P1SR_LINK_GOOD           (1 << 5)
+//#define P1SR_LINK_GOOD           (1 << 5)
 #define P1SR_PNTR_FLOW           (1 << 4)
 #define P1SR_PNTR_100BT_FDX         (1 << 3)
 #define P1SR_PNTR_100BT_HDX         (1 << 2)

@@ -4,7 +4,7 @@
 # 2019 by Heiko Prüssing
 #
 
-SOURCE_TESTTOOL   = testtool.c ks8851_mll.c
+SOURCE_TESTTOOL   = $(wildcard *.c)
 HDR 					:= $(wildcard *.h) 
 
 COMPILE_MODE		=
@@ -25,30 +25,8 @@ endif
 
 BUILDDIR=build/build-$(ARCH)
 
-# Cross compile with MacOSX and GCC 3.4.1
-CCPATH                       = /usr/local/cross-tools/m68k-amigaos
-CC                           = $(CCPATH)/bin/gcc 
-CPP                          = $(CCPATH)/bin/g++
-AR                           = $(CCPATH)/bin/ar
-RANLIB							  = $(CCPATH)/bin/ranlib
-SHELL                        = sh
-LINKER                       = $(CCPATH)/bin/gcc
-AOS_INCLUDES                 = -Iincludes/os-include39/include/include_h 
 OS_INCLUDES                  = -Iincludes -Iincludes/sana -Iincludes/libnix -Iincludes/mui
-PRJ_INCLUDES                 = -I. -IEtherPrefs
-CC_OPTS                      += -Os \
-										-fstrength-reduce \
-                              -nostdinc $(AOS_INCLUDES) -I$(CCPATH)/include -I$(CCPATH)/sys-include $(OS_INCLUDES) $(PRJ_INCLUDES)  \
-                              -fno-builtin-printf \
-                              -noixemul \
-                              -std=c99 \
-                              -Wall \
-                              -fomit-frame-pointer \
-                              -m68$(ARCH) \
-                              -msoft-float                               
-                              
-CPPFLAGS								+= -Os -D__cplusplus $(AOS_INCLUDES) $(OS_INCLUDES) -I. \
-										 -m68$(ARCH) 
+PRJ_INCLUDES                 = -I.
                                                             
 LINKER_OPTS                	= -Llibs -nostdlib -noixemul -lnix -lamiga -lstubs 
 
@@ -72,7 +50,7 @@ builddir:
 		
 $(BUILDDIR)/ksz8851:	$(OBJECTS_TESTTOOL)
 		@echo "Linking       " $@
-		@$(LINKER) $^ $(STRIP_OPTS) -o $@ -noixemul -Llibs -O2 -Wl,-Map,$@.map 
+		$(LD) $^ $(STRIP_OPTS) -o $@ -noixemul -Llibs -O2 -Wl,-Map,$@.map 
 		
 		
 # Installs device on real Amiga via "Amiga Explorer"
@@ -83,17 +61,16 @@ install:
 		@sleep 1
 		$(AMIGA_EXPLORER) -s $(BUILDDIR)/ksz8851 RAD:/ksz8851	
 		
-
 clean:
 		rm -r -f -d $(BUILDDIR)/* *.o *.s *.aobj *.map mapfile
 
 #.c.o:
 $(BUILDDIR)/%.o:%.c $(HDR)
 	@echo "Compiling C   " $< " (cpu=68"$(ARCH)")"
-	@$(CC) -c -nostdinc $(CC_OPTS) -o $@ $< 
+	@$(CC) -c $(CC_OPTS) -o $@ $< 
 
 .c.s:
-	$(CC) -S -nostdinc $(CC_OPTS) $(COMPILE_MODE) -o $@ $< 
+	$(CC) -S $(CC_OPTS) $(COMPILE_MODE) -o $@ $< 
 	
 .cpp.s:
 	$(CPP) -S $(CPPFLAGS) $(COMPILE_MODE) -o $@ $< 
