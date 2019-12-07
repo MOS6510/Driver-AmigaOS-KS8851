@@ -19,10 +19,7 @@
 
 #include <clib/exec_protos.h>
 
-
-
 //HP:
-
 #define error_t int
 #define __start_packed
 #define __end_packed
@@ -41,14 +38,11 @@ typedef struct {
    uint16_t w[3];
 } MacAddress;
 
-#define NicContext int
-
-
+#define NicContext void *
 
 typedef struct {
-   void * nicContext;
+   NicContext nicContext;
    MacAddress macAddr;
-   //(void) (*extIntDriver)(void);
    int linkSpeed;
    int duplexMode;
    bool linkState;
@@ -59,9 +53,7 @@ typedef struct {
 } NetBuffer;
 
 int netBufferGetLength(const NetBuffer * buffer);
-
 void netBufferRead(const uint8_t * srcBuffer, const NetBuffer * buffer, int offset, int length) ;
-
 uint16_t htons(uint16_t hostshort);
 
 #define bool_t bool
@@ -76,20 +68,14 @@ uint16_t htons(uint16_t hostshort);
 #define ERROR_INVALID_PACKET -5
 #define NO_CHIP_FOUND -6
 
-
 #define memPoolAlloc(a) AllocVec(a, MEMF_ANY)
-#define ETH_MAX_FRAME_SIZE 1518
 #define memPoolFree(a) FreeVec(a)
 
-//void printPacket(const uint8_t * buffer, int size);
+#define ETH_MAX_FRAME_SIZE 1518
 
 typedef void (*ProcessPacketFunc)(const uint8_t * buffer, int size);
 
 // -------------
-
-
- #define KSZ8851_SPI_SUPPORT DISABLED
-
 
  //KSZ8851 data register
  #ifndef KSZ8851_DATA_REG
@@ -516,39 +502,22 @@ typedef void (*ProcessPacketFunc)(const uint8_t * buffer, int size);
  } Ksz8851Context;
 
 
- //KSZ8851 driver
- //extern const NicDriver ksz8851Driver;
-
- //KSZ8851 related functions
  error_t ksz8851Init(NetInterface *interface);
-
  void ksz8851Tick(NetInterface *interface);
-
  void ksz8851EnableIrq(NetInterface *interface);
  void ksz8851DisableIrq(NetInterface *interface);
  bool_t ksz8851IrqHandler(NetInterface *interface);
  void ksz8851EventHandler(NetInterface *interface);
-
- error_t ksz8851SendPacket(NetInterface *interface,
-    const NetBuffer *buffer, size_t offset);
-
+ error_t ksz8851SendPacket(NetInterface *interface, const NetBuffer *buffer, size_t offset);
  error_t ksz8851ReceivePacket(NetInterface *interface, ProcessPacketFunc proessFunc);
-
  error_t ksz8851UpdateMacAddrFilter(NetInterface *interface);
-
  void ksz8851WriteReg(NetInterface *interface, uint8_t address, uint16_t data);
  uint16_t ksz8851ReadReg(NetInterface *interface, uint8_t address);
-
  void ksz8851WriteFifo(NetInterface *interface, const uint8_t *data, size_t length);
-
  void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length);
-
  void ksz8851SetBit(NetInterface *interface, uint8_t address, uint16_t mask);
  void ksz8851ClearBit(NetInterface *interface, uint8_t address, uint16_t mask);
-
  uint32_t ksz8851CalcCrc(const void *data, size_t length);
-
  void ksz8851DumpReg(NetInterface *interface);
-
 
  #endif
