@@ -1,8 +1,94 @@
 /*
- *
+ * KSZ8851 Amiga Network Driver
  */
 
  #include "ksz8851.h"
+
+// -------------- PROTOTYPES ------------
+
+void nicNotifyLinkChange(NetInterface * interface);
+extern void ksz8851_SoftReset(NetInterface *interface, unsigned op);
+
+
+// --------------------------------------- Amiga Interrupts ------------------------------------------------
+
+#if !defined(REG)
+#define REG(reg,arg) arg __asm(#reg)
+#endif
+
+ static volatile uint8_t isr( REG(a1, NetInterface * interface) )
+ {
+    if (ksz8851IrqHandler(interface)) {
+       Ksz8851Context * context = (Ksz8851Context*)interface->nicContext;
+       Signal(context->signalTask, (1<< context->sigNumber));
+       context->signalCounter++;
+       return (uint8_t)1;
+    }
+    return (uint8_t)0;
+ }
+
+ static void installInterruptHandler(NetInterface * interface,struct Task * task, ULONG sigNumber)
+ {
+    Ksz8851Context * context = (Ksz8851Context*)interface->nicContext;
+
+    if (context->signalTask) {
+       printf("Interrupt is already installed...\n");
+       return;
+    }
+
+    context->signalTask = task;
+    context->sigNumber  = sigNumber;
+
+    context->AmigaInterrupt.is_Node.ln_Type = NT_INTERRUPT;
+    context->AmigaInterrupt.is_Node.ln_Name = "KSZ8851 SANA2 network driver interrupt";
+    context->AmigaInterrupt.is_Node.ln_Pri  = 121;
+    context->AmigaInterrupt.is_Data         = interface;
+    context->AmigaInterrupt.is_Code         = (void*)(&isr);
+
+    //Network chip uses (INT6) which is "external interrupt" on AmigaOS.
+    AddIntServer(INTB_EXTER, &context->AmigaInterrupt);
+ }
+
+ static void uninstallInterruptHandler(NetInterface * interface)
+ {
+    Ksz8851Context * context = (Ksz8851Context*)interface->nicContext;
+    if(context->signalTask)
+    {
+       RemIntServer(INTB_EXTER, &context->AmigaInterrupt);
+       context->signalTask = NULL;
+       FreeSignal(context->sigNumber);
+       context->sigNumber= -1;
+    }
+ }
+
+ // --------------------------------------- Amiga Interrupts end --------------------------------------------
+
+
+ /**
+  * @brief Enable interrupts
+  * @param[in] interface Underlying network interface
+  **/
+
+ void ksz8851EnableIrq(NetInterface *interface)
+ {
+    installInterruptHandler(interface,FindTask(0l),AllocSignal(-1));
+ }
+
+
+ /**
+  * @brief Disable interrupts
+  * @param[in] interface Underlying network interface
+  **/
+
+ void ksz8851DisableIrq(NetInterface *interface)
+ {
+    //Disable interrupts to release the interrupt line
+    Disable();
+    ksz8851WriteReg(interface, KSZ8851_REG_IER, 0);
+    Enable();
+    uninstallInterruptHandler(interface);
+ }
+
 
  /**
   * @brief KSZ8851 controller initialization
@@ -18,11 +104,11 @@
     //Debug message
     TRACE_INFO("Initializing KSZ8851 Ethernet controller...\r\n");
 
-    //Initialize external interrupt line
-    //interface->extIntDriver->init();
+    //Reset Chip first...
+    ksz8851_SoftReset(interface,1);
 
     //Debug message
-    TRACE_DEBUG("CIDER=0x%04" PRIX16 "\r\n", ksz8851ReadReg(interface, KSZ8851_REG_CIDER));
+    TRACE_DEBUG("CIDER=0x%04" PRIX16 "\r\n",   ksz8851ReadReg(interface, KSZ8851_REG_CIDER));
     TRACE_DEBUG("PHY1ILR=0x%04" PRIX16 "\r\n", ksz8851ReadReg(interface, KSZ8851_REG_PHY1ILR));
     TRACE_DEBUG("PHY1IHR=0x%04" PRIX16 "\r\n", ksz8851ReadReg(interface, KSZ8851_REG_PHY1IHR));
 
@@ -31,9 +117,6 @@
        TRACE_DEBUG("Failed!\n");
        return ERROR_WRONG_IDENTIFIER;
     }
-
-    //Dump registers for debugging purpose
-    ksz8851DumpReg(interface);
 
     //Initialize driver specific variables
     context->frameId = 0;
@@ -49,7 +132,6 @@
        memPoolFree(context->txBuffer);
        memPoolFree(context->rxBuffer);
 
-       //Report an error
        return ERROR_OUT_OF_MEMORY;
     }
 
@@ -89,59 +171,43 @@
        ISR_RXWFDIS | ISR_RXMPDIS | ISR_LDIS | ISR_EDIS | ISR_SPIBEIS);
 
     //Configure interrupts as desired (HP: TODO do not activate until Amiga ISR is installed!)
-    //ksz8851SetBit(interface, KSZ8851_REG_IER, /*IER_LCIE |*/ IER_TXIE /*| IER_RXIE*/);
+    ksz8851SetBit(interface, KSZ8851_REG_IER, IER_LCIE | IER_TXIE | IER_RXIE | IER_RXOIE);
 
     //Enable TX operation
     ksz8851SetBit(interface, KSZ8851_REG_TXCR, TXCR_TXE);
     //Enable RX operation
     ksz8851SetBit(interface, KSZ8851_REG_RXCR1, RXCR1_RXE);
 
-    //Accept any packets from the upper layer
-    //osSetEvent(&interface->nicTxEvent);
-
-    //Force the TCP/IP stack to poll the link state at startup
-    //interface->nicEvent = TRUE;
-    //Notify the TCP/IP stack of the event
-    //osSetEvent(&netEvent);
-
     //Successful initialization
     return NO_ERROR;
  }
 
-
-
- /**
-  * @brief Enable interrupts
-  * @param[in] interface Underlying network interface
-  **/
-
- void ksz8851EnableIrq(NetInterface *interface)
+ void ksz8851_SoftReset(NetInterface *interface, unsigned op)
  {
-    //Enable interrupts
-    //interface->extIntDriver->enableIrq();
+    /* Disable interrupt first */
+    uint16_t oldisr = ksz8851ReadReg(interface, KSZ8851_REG_ISR);
+
+    ksz8851WriteReg(interface, KSZ8851_REG_ISR, 0x0000);
+    ksz8851WriteReg(interface,  KSZ8851_REG_GRR, op);
+    Delay(50);
+     /* wait a short time to effect reset */
+    ksz8851WriteReg(interface,  KSZ8851_REG_GRR, 0);
+    /* wait for condition to clear */
+    Delay(50);
+
+    //Re-enable all int flags again...
+    ksz8851WriteReg(interface, KSZ8851_REG_ISR, oldisr);
  }
-
-
- /**
-  * @brief Disable interrupts
-  * @param[in] interface Underlying network interface
-  **/
-
- void ksz8851DisableIrq(NetInterface *interface)
- {
-    //Disable interrupts
-    //interface->extIntDriver->disableIrq();
- }
-
 
  /**
   * @brief KSZ8851 interrupt service routine
   * @param[in] interface Underlying network interface
   * @return TRUE if a higher priority task must be woken. Else FALSE is returned
   **/
-
  bool_t ksz8851IrqHandler(NetInterface *interface)
  {
+    Ksz8851Context * context = (Ksz8851Context*)interface->nicContext;
+
     bool_t flag;
     uint16_t ier;
     uint16_t isr;
@@ -149,13 +215,20 @@
     //This flag will be set if a higher priority task must be woken
     flag = FALSE;
 
+    //Read interrupt status register and check of valid interrupt from nic
+    isr = ksz8851ReadReg(interface, KSZ8851_REG_ISR);
+    if (0 == isr) {
+       //No, not from NIC
+       return false;
+    }
+
+    flag = TRUE;
+
     //Save IER register value
     ier = ksz8851ReadReg(interface, KSZ8851_REG_IER);
+
     //Disable interrupts to release the interrupt line
     ksz8851WriteReg(interface, KSZ8851_REG_IER, 0);
-
-    //Read interrupt status register
-    isr = ksz8851ReadReg(interface, KSZ8851_REG_ISR);
 
     //Link status change?
     if(isr & ISR_LCIS)
@@ -167,6 +240,7 @@
        //interface->nicEvent = TRUE;
        //Notify the TCP/IP stack of the event
        //flag |= osSetEventFromIsr(&netEvent);
+       flag = TRUE;
     }
 
     //Packet transmission complete?
@@ -177,6 +251,7 @@
 
        //Notify the TCP/IP stack that the transmitter is ready to send
        //flag |= osSetEventFromIsr(&interface->nicTxEvent);
+       flag = TRUE;
     }
 
     //Packet received?
@@ -189,12 +264,31 @@
        //interface->nicEvent = TRUE;
        //Notify the TCP/IP stack of the event
        //flag |= osSetEventFromIsr(&netEvent);
+       flag = TRUE;
     }
 
-    //Re-enable interrupts once the interrupt has been serviced
+    //Overrun rx packets?
+    if (isr & ISR_RXOIS) {
+
+      ier &= ~ISR_RXOIS;
+
+      flag = TRUE;
+    }
+
+    //Link-up status detect
+    if (isr & ISR_LDIS) {
+       //clear event with only PMECR "0010" => [5:2]
+       ksz8851SetBit(interface, KSZ8851_REG_PMECR, 0x2 << 2);
+
+       ier &= ~ISR_LDIS;
+
+       flag = TRUE;
+    }
+
+    //Disable all received interrupts now.
+    //Re-enable interrupts once the interrupt has been serviced!
     ksz8851WriteReg(interface, KSZ8851_REG_IER, ier);
 
-    //A higher priority task must be woken?
     return flag;
  }
 
@@ -203,11 +297,11 @@
   * @brief KSZ8851 event handler
   * @param[in] interface Underlying network interface
   **/
-
- void ksz8851EventHandler(NetInterface *interface)
+ void ksz8851EventHandler(NetInterface *interface, ProcessPacketFunc processFunc)
  {
     uint16_t status;
-    uint_t frameCount;
+    uint16_t frameCount;
+    uint16_t enableMask = 0;
 
     //Read interrupt status register
     status = ksz8851ReadReg(interface, KSZ8851_REG_ISR);
@@ -244,8 +338,10 @@
           interface->linkState = FALSE;
        }
 
+       enableMask |= ~ISR_LCIS;
+
        //Process link state change event
-       //nicNotifyLinkChange(interface);
+       nicNotifyLinkChange(interface);
     }
 
     //Check whether a packet has been received?
@@ -255,19 +351,31 @@
        ksz8851WriteReg(interface, KSZ8851_REG_ISR, ISR_RXIS);
        //Get the total number of frames that are pending in the buffer
        frameCount = MSB(ksz8851ReadReg(interface, KSZ8851_REG_RXFCTR));
+       //printf("Count of packet to rx: %d\n", frameCount);
 
        //Process all pending packets
-       while(frameCount > 0)
+       while((frameCount--) > 0)
        {
           //Read incoming packet //TODO: receive method...
-          ksz8851ReceivePacket(interface, NULL);
-          //Decrement frame counter
-          frameCount--;
+          ksz8851ReceivePacket(interface, processFunc);
        }
+       enableMask |= ~ISR_RXIS;
     }
 
-    //Re-enable LCIE and RXIE interrupts
-    ksz8851SetBit(interface, KSZ8851_REG_IER, IER_LCIE | IER_RXIE);
+    //Receiver overruns?
+    if (status & ISR_RXOIS) {
+       ((Ksz8851Context*)interface->nicContext)->rxOverrun++;
+       enableMask |= ~ISR_RXOIS;
+    }
+
+    //Wakeup from something?
+    if (status & ISR_LDIS) {
+       //nicNotifyLinkChange(interface);
+       enableMask |= ~ISR_LDIS;
+    }
+
+    //Re-enable all interrupts again...
+    ksz8851SetBit(interface, KSZ8851_REG_IER, IER_LCIE | IER_RXIE | ISR_RXOIS | ISR_LDIS);
  }
 
 
@@ -359,7 +467,7 @@
        {
           //Read received frame byte size from RXFHBCR
           n = ksz8851ReadReg(interface, KSZ8851_REG_RXFHBCR) & RXFHBCR_RXBC_MASK;
-          //printf(" %d ", n);
+          printf(" %d: ", n);
 
           //Ensure the frame size is acceptable
           if(n > 0 && n <= ETH_MAX_FRAME_SIZE)
@@ -375,18 +483,24 @@
 
              //Pass the packet to the upper layer
              if (processFunc) {
-
                 processFunc(context->rxBuffer, n);
              }
 
              //Valid packet received
              return NO_ERROR;
+          } else {
+             printf(" Invalid length %d!\n", n);
           }
+       } else {
+          printf(" Packet not ok status=0x%x????\n", status);
        }
+    } else {
+       printf(" Packet is marked as not valid 0x5x????\n", status);
     }
 
     //Release the current error frame from RXQ
     ksz8851SetBit(interface, KSZ8851_REG_RXQCR, RXQCR_RRXEF);
+
     //Report an error
     return ERROR_INVALID_PACKET;
  }
@@ -397,7 +511,7 @@
   * @param[in] interface Underlying network interface
   * @return Error code
   **/
-/*
+#if 0
  error_t ksz8851SetMulticastFilter(NetInterface *interface)
  {
     uint_t i;
@@ -446,7 +560,7 @@
     //Successful processing
     return NO_ERROR;
  }
- */
+#endif
 
 
  /**
@@ -551,7 +665,6 @@
   * @param[in] address Register address
   * @param[in] mask Bits to set in the target register
   **/
-#if 1
  void ksz8851SetBit(NetInterface *interface, uint8_t address, uint16_t mask)
  {
     uint16_t value;
@@ -579,7 +692,6 @@
     //Clear specified bits
     ksz8851WriteReg(interface, address, value & ~mask);
  }
-#endif
 
  /**
   * @brief CRC calculation
@@ -616,41 +728,3 @@
     return crc;
  }
 
-
- /**
-  * @brief Dump registers for debugging purpose
-  * @param[in] interface Underlying network interface
-  **/
-
- void ksz8851DumpReg(NetInterface *interface)
- {
-#if 0
- #if (TRACE_LEVEL >= TRACE_LEVEL_DEBUG)
-    uint_t i;
-    uint_t j;
-    uint_t address;
-
-    //Loop through register addresses
-    for(i = 0; i < 256; i += 16)
-    {
-       //Display register address
-       TRACE_DEBUG("%02" PRIu8 ": ", i);
-
-       //Display 8 registers at a time
-       for(j = 0; j < 16; j += 2)
-       {
-          //Format register address
-          address = i + j;
-          //Display register contents
-          TRACE_DEBUG("0x%04" PRIX16 "  ", ksz8851ReadReg(interface, address));
-       }
-
-       //Jump to the following line
-       TRACE_DEBUG("\r\n");
-    }
-
-    //Terminate with a line feed
-    TRACE_DEBUG("\r\n");
- #endif
-#endif
- }

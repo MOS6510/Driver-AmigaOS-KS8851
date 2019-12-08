@@ -18,13 +18,18 @@
 #include <stdlib.h>
 
 #include <clib/exec_protos.h>
+#include <exec/interrupts.h>
+#include <exec/tasks.h>
+#include <hardware/intbits.h>
 
 //HP:
 #define error_t int
 #define __start_packed
 #define __end_packed
 #define uint_t uint16_t
-#define MSB(x) (x)
+
+//get the highest byte of 16 bit only (BE??)
+#define MSB(x) (((x) >> 8) & 0xff)
 
 #define NIC_LINK_SPEED_100MBPS 100
 #define NIC_LINK_SPEED_10MBPS 10
@@ -38,10 +43,8 @@ typedef struct {
    uint16_t w[3];
 } MacAddress;
 
-#define NicContext void *
-
 typedef struct {
-   NicContext nicContext;
+   void * nicContext;
    MacAddress macAddr;
    int linkSpeed;
    int duplexMode;
@@ -499,6 +502,13 @@ typedef void (*ProcessPacketFunc)(const uint8_t * buffer, int size);
     uint_t frameId;    ///<Identify a frame and its associated status
     uint8_t *txBuffer; ///<Transmit buffer
     uint8_t *rxBuffer; ///<Receive buffer
+
+    //Amiga:
+    struct Interrupt AmigaInterrupt;
+    struct Task * signalTask; //Amiga Signal task to signal
+    ULONG sigNumber;          //Number of the signal to signal task
+    ULONG signalCounter;      //Number of signaled events to the task...
+    ULONG rxOverrun;          //Overrun counter
  } Ksz8851Context;
 
 
@@ -507,7 +517,7 @@ typedef void (*ProcessPacketFunc)(const uint8_t * buffer, int size);
  void ksz8851EnableIrq(NetInterface *interface);
  void ksz8851DisableIrq(NetInterface *interface);
  bool_t ksz8851IrqHandler(NetInterface *interface);
- void ksz8851EventHandler(NetInterface *interface);
+ void ksz8851EventHandler(NetInterface *interface, ProcessPacketFunc processFunc);
  error_t ksz8851SendPacket(NetInterface *interface, const NetBuffer *buffer, size_t offset);
  error_t ksz8851ReceivePacket(NetInterface *interface, ProcessPacketFunc proessFunc);
  error_t ksz8851UpdateMacAddrFilter(NetInterface *interface);
@@ -519,5 +529,6 @@ typedef void (*ProcessPacketFunc)(const uint8_t * buffer, int size);
  void ksz8851ClearBit(NetInterface *interface, uint8_t address, uint16_t mask);
  uint32_t ksz8851CalcCrc(const void *data, size_t length);
  void ksz8851DumpReg(NetInterface *interface);
+ void ksz8851_SoftReset(NetInterface *interface, unsigned op);
 
  #endif

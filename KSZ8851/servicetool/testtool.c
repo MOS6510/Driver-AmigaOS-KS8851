@@ -38,8 +38,8 @@ static const char * VERSION = "1.2";
 
 // ########################################## EXTERNALS #####################################################
 
-static Ksz8851Context context;
-static NetInterface interface = { .nicContext = &context };
+static Ksz8851Context context = { .signalTask = NULL, .sigNumber = -1 };
+static NetInterface interface = { .nicContext = (Ksz8851Context*)&context };
 
 // Base address of the KSZ8851 ethernet chip in Amiga memory address space
 #define ETHERNET_BASE_ADDRESS (u32)0xd90000l
@@ -292,23 +292,7 @@ void dumpRegister16BitMode(NetInterface *interface) {
    printf("\n");
 }
 
-void ksz8851_SoftReset(NetInterface *interface, unsigned op)
-{
-   printf("   ksz8851_SoftReset()\n");
-   /* Disable interrupt first */
-   u16 oldisr = ksz8851ReadReg(interface, KSZ8851_REG_ISR);
 
-   ksz8851WriteReg(interface, KSZ8851_REG_ISR, 0x0000);
-   ksz8851WriteReg(interface,  KSZ8851_REG_GRR, op);
-   Delay(50);
-   //mdelay(50); /* wait a short time to effect reset */
-   ksz8851WriteReg(interface,  KSZ8851_REG_GRR, 0);
-   //mdelay(50);  /* wait for condition to clear */
-   Delay(50);
-
-   //Re-enable all int flags again...
-   ksz8851WriteReg(interface, KSZ8851_REG_ISR, oldisr);
-}
 
 void processPacket(const uint8_t * buffer, int size) {
    printf("Packet content (length=%d):\n", size);
@@ -377,11 +361,22 @@ void printMIB(NetInterface * ks) {
    }
 }
 
+void nicNotifyLinkChange(NetInterface * interface) {
+   printLinkStatus(interface);
+}
+
 
 int main(int argc, char * argv[])
 {
    bool looping = false;
    bool send = false;
+
+   //Init network context:
+   memset(&interface,0,sizeof(interface));
+   memset(&context,0,sizeof(context));
+   interface.nicContext = &context;
+   context.sigNumber = -1;
+
 
    atexit(done);
 
@@ -444,9 +439,6 @@ int main(int argc, char * argv[])
    }
 
    {
-      //Init network structure
-      //ks = ks8851_init();
-
       if (swappingDataRegValue) {
          printf("%s-tool is swapping every 16 bit data during chip access.\n", argv[0]);
       }
@@ -464,6 +456,12 @@ int main(int argc, char * argv[])
          u16 oldValue = ksz8851ReadReg(&interface, KSZ8851_REG_RXFDPR);
          ksz8851WriteReg(&interface, KSZ8851_REG_RXFDPR, oldValue & ~RXFDPR_EMS); //Bit 11 = 0  => LittleEndian
       }
+
+      ksz8851EnableIrq(&interface);
+      if (context.signalTask != FindTask(0l)) {
+               printf("Unknown Signal Task!!!!\n");
+            }
+      printf("Using task signal number %d\n", context.sigNumber);
 
       //
       // Probe for chip
@@ -485,72 +483,39 @@ int main(int argc, char * argv[])
             }
          }
 
+
          //Processing events (Polling):
          do {
-            {
-               //Service all interrupts: (polling)
-               u16 isr = ksz8851ReadReg(&interface, KSZ8851_REG_ISR);
-               if (isr != 0) {
 
-                  //"Link change" interrupt?
-                  if (isr & ISR_LCIS) {
-                     printf("### =>Link Change Interrupt detected!\n");
-                     ksz8851SetBit(&interface, KSZ8851_REG_ISR, ISR_LCIS); //ACK with set same to 1
+            //Wait for any signal:
+            ULONG receivedSignalMask = Wait(0xffffffff);
+            printf("Signal: signals=#%ld, rxoverrun=%ld\n",
+                  context.signalCounter, context.rxOverrun);
+            if (receivedSignalMask & SIGBREAKF_CTRL_C)
+               break;
 
-                     printLinkStatus(&interface);
-                     continue;
-                  }
+            //Process event on event handler...
+            Disable();
+            ksz8851EventHandler(&interface, processPacket);
+            Enable();
 
-                  //"Wakeup from linkup" interrupt?
-                  if (isr & IRQ_LDI) {
-                     printf("### =>Wakeup from linkup detected!\n");
-                     ksz8851SetBit(&interface, KSZ8851_REG_PMECR, 0x2 << 2); //clear event with only PMECR "0010" => [5:2]
+            //Print some MIBs
+            //printMIB(ks);
 
-                     printLinkStatus(&interface);
-                     continue;
-                  }
-
-                  if (isr & ISR_RXIS) {
-                     printf("### => RX interrupt!!\n");
-                     ksz8851SetBit(&interface, KSZ8851_REG_ISR, ISR_RXIS);
-
-                     ksz8851ReceivePacket(&interface, processPacket);
-                     continue;
-                  }
-
-                  if (isr & ISR_RXOIS) {
-                     printf("### => RX Overrun!!\n");
-                     ksz8851SetBit(&interface, KSZ8851_REG_ISR, ISR_RXOIS);
-                     ksz8851_SoftReset(&interface,1);
-                     continue;
-                  }
-
-                  printf("### => unknown interrupt 0x%04x\n", isr);
-                  Delay(12.5);
-                  continue;
-               }
-
-               //Print some MIBs
-               //printMIB(ks);
-
-               //Check "RECEIVE FRAME HEADER STATUS REGISTER"...
-               //u16 readStatus = ksz8851ReadReg16(ks, KS_RXFHSR);
-               //printf("KS_RXFHSR = 0x%04x\n", readStatus);
+            //Check "RECEIVE FRAME HEADER STATUS REGISTER"...
+            //u16 readStatus = ksz8851ReadReg16(ks, KS_RXFHSR);
+            //printf("KS_RXFHSR = 0x%04x\n", readStatus);
 
 
-               //RX FRAME COUNT AND THRESHOLD REGISTER
-               //u16 frameCounter = ksz8851ReadReg16(ks, KS_RXFCTR);
-               //printf("KS_RXFCTR = 0x%04x\n", frameCounter);
+            //RX FRAME COUNT AND THRESHOLD REGISTER
+            //u16 frameCounter = ksz8851ReadReg16(ks, KS_RXFCTR);
+            //printf("KS_RXFCTR = 0x%04x\n", frameCounter);
 
-               //Read FRAME HEADER BYTE COUNT REGISTER...
-               //u16 pktLength = ksz8851ReadReg16(ks, KS_RXFHBCR);
-               //printf("KS_RXFHBCR= 0x%04x\n", pktLength);
-            }
+            //Read FRAME HEADER BYTE COUNT REGISTER...
+            //u16 pktLength = ksz8851ReadReg16(ks, KS_RXFHBCR);
+            //printf("KS_RXFHBCR= 0x%04x\n", pktLength);
 
-            //3 cursor up
-            //printf("\033[1A");
-
-            Delay(12.5);
+            Delay(15);
 
          } while(looping);
       }
@@ -565,4 +530,6 @@ void done(void) {
    //
    //dumpRegister8BitMode(&interface);
    dumpRegister16BitMode(&interface);
+
+   ksz8851DisableIrq(&interface);
 }

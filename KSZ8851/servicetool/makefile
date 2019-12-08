@@ -36,7 +36,7 @@ ADFIMAGE								= Amiga1200+.adf
 
 .PHONY: all distribution
 
-all: builddir $(BUILDDIR)/ksz8851 $(BUILDDIR)/$(ADFIMAGE)
+all: builddir $(BUILDDIR)/ksz8851 $(BUILDDIR)/$(ADFIMAGE) $(BUILDDIR)/ksz8851.s
 
 $(BUILDDIR)/$(ADFIMAGE):
 	@echo "Create ADF image..."
@@ -50,7 +50,7 @@ builddir:
 		
 $(BUILDDIR)/ksz8851:	$(OBJECTS_TESTTOOL)
 		@echo "Linking       " $@
-		$(LD) $^ $(STRIP_OPTS) -o $@ -noixemul -Llibs -O2 -Wl,-Map,$@.map 
+		@$(LD) $^ $(STRIP_OPTS) -o $@ -noixemul -Llibs -O2 -Wl,-Map,$@.map 
 		
 		
 # Installs device on real Amiga via "Amiga Explorer"
@@ -69,7 +69,8 @@ $(BUILDDIR)/%.o:%.c $(HDR)
 	@echo "Compiling C   " $< " (cpu=68"$(ARCH)")"
 	@$(CC) -c $(CC_OPTS) -o $@ $< 
 
-.c.s:
+#.c.s:
+$(BUILDDIR)/%.s:%.c $(HDR)
 	$(CC) -S $(CC_OPTS) $(COMPILE_MODE) -o $@ $< 
 	
 .cpp.s:
