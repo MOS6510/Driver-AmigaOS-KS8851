@@ -41,6 +41,13 @@ static const char * VERSION = "1.2";
 static Ksz8851Context context = { .signalTask = NULL, .sigNumber = -1 };
 static NetInterface interface = { .nicContext = (Ksz8851Context*)&context };
 
+
+static uint8_t TEST_PACKET[] = "\xff\xff\xff\xff\xff\xff\x38\xc9\x86\x58\x1b\x4a\x08\x06\x00\x01" \
+      "\x08\x00\x06\x04\x00\x01\x38\xc9\x86\x58\x1b\x4a\xc0\xa8\x12\x04" \
+      "\x00\x00\x00\x00\x00\x00\xc0\xa8\x12\x3b";
+
+
+
 // Base address of the KSZ8851 ethernet chip in Amiga memory address space
 #define ETHERNET_BASE_ADDRESS (u32)0xd90000l
 #define KS8851_REG_DATA_OFFSET 0x00
@@ -86,8 +93,8 @@ int netBufferGetLength(const NetBuffer * buffer) {
    return buffer->len;
 }
 
-void netBufferRead(const uint8_t * srcBuffer, const NetBuffer * buffer, int offset, int length) {
-   //TODO:
+void netBufferRead(uint8_t * dstBuffer, const NetBuffer * srcBuffer, int offset, int length) {
+   memcpy(dstBuffer,srcBuffer->bufferData+offset,length);
 }
 
 uint16_t htons(uint16_t hostshort) {
@@ -365,11 +372,23 @@ void nicNotifyLinkChange(NetInterface * interface) {
    printLinkStatus(interface);
 }
 
+//Wait NIC is up...
+void waitNICIsUp(NetInterface * interface) {
+   do {
+      ULONG receivedSignalMask = Wait(0xffffffff);
+      Disable();
+      ksz8851EventHandler(interface, processPacket);
+      Enable();
+      Delay(10);
+   } while(! interface->linkState );
+}
+
 
 int main(int argc, char * argv[])
 {
    bool looping = false;
    bool send = false;
+   int pktSendCnt = 1;
 
    //Init network context:
    memset(&interface,0,sizeof(interface));
@@ -415,7 +434,11 @@ int main(int argc, char * argv[])
          }
 
          if (strcmp(argv[i], "send") == 0) {
-                    send = true;
+            send = true;
+            //if (argc >= i )
+            {
+               pktSendCnt = atoi(argv[i+1]);
+            }
          }
       }
    }
@@ -427,6 +450,7 @@ int main(int argc, char * argv[])
             " swapdata: swap every 16 bit of data register value\n"
             " swapcmd:  swap every 16 bit of cmd register value\n"
             " loop:  stay until key pressed. reporting link states\n"
+            " send x:  send small packets\n"
             , argv[0]);
       exit(0);
    }
@@ -458,14 +482,10 @@ int main(int argc, char * argv[])
       }
 
       ksz8851EnableIrq(&interface);
-      if (context.signalTask != FindTask(0l)) {
-               printf("Unknown Signal Task!!!!\n");
-            }
       printf("Using task signal number %d\n", context.sigNumber);
 
-      //
+
       // Probe for chip
-      //
       error_t probing = ksz8851Init(&interface);
       if (probing == NO_ERROR)
       {
@@ -474,15 +494,33 @@ int main(int argc, char * argv[])
 
          //Sending packets???
          if (send) {
-            while(1) {
-               if ( NO_ERROR == ksz8851SendPacket(&interface,NULL,0)) {
-                  printf("Pkt send...\n");
+
+            //Wait NIC is up...
+            printf("Wait NIC is up...\n");
+            waitNICIsUp(&interface);
+
+
+            NetBuffer nb;
+            nb.bufferData = TEST_PACKET;
+            nb.len = sizeof(TEST_PACKET);
+            int pktCount = 0;
+
+            do {
+
+               Disable();
+               error_t status = ksz8851SendPacket(&interface,&nb,0);
+               Enable();
+
+               if ( status == NO_ERROR) {
+                  printf("Pkt send #%d\n", pktCount);
                } else {
                   printf("Pkt send failed!\n");
                }
-            }
-         }
 
+               pktCount++;
+
+            } while(pktCount < pktSendCnt);
+         }
 
          //Processing events (Polling):
          do {
@@ -502,19 +540,6 @@ int main(int argc, char * argv[])
             //Print some MIBs
             //printMIB(ks);
 
-            //Check "RECEIVE FRAME HEADER STATUS REGISTER"...
-            //u16 readStatus = ksz8851ReadReg16(ks, KS_RXFHSR);
-            //printf("KS_RXFHSR = 0x%04x\n", readStatus);
-
-
-            //RX FRAME COUNT AND THRESHOLD REGISTER
-            //u16 frameCounter = ksz8851ReadReg16(ks, KS_RXFCTR);
-            //printf("KS_RXFCTR = 0x%04x\n", frameCounter);
-
-            //Read FRAME HEADER BYTE COUNT REGISTER...
-            //u16 pktLength = ksz8851ReadReg16(ks, KS_RXFHBCR);
-            //printf("KS_RXFHBCR= 0x%04x\n", pktLength);
-
             Delay(15);
 
          } while(looping);
@@ -528,8 +553,10 @@ void done(void) {
    //
    // Dump registers...
    //
+   Disable();
    //dumpRegister8BitMode(&interface);
    dumpRegister16BitMode(&interface);
+   Enable();
 
    ksz8851DisableIrq(&interface);
 }

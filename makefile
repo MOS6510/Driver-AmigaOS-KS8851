@@ -17,14 +17,15 @@ INC_SRCH_PATH						:= -I$(PROJ_ROOT)/os_includes/sana
 
 CFLAGS								+= -Os \
 										-fstrength-reduce \
-										$(INC_SRCH_PATH) \
-										-fno-builtin-printf \
-										-fomit-frame-pointer \
+									 	$(INC_SRCH_PATH) \
 										-Wstrict-prototypes \
                               -noixemul \
                               -Wall \
                               -m68$(ARCH) \
-                              -msoft-float 
+										-fomit-frame-pointer \
+                              -msoft-float
+                               
+#-fno-builtin-printf \                         
                               
 #If not given via command line, build for "68000"
 ifeq ($(ARCH),)

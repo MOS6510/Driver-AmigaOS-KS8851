@@ -16,6 +16,7 @@
 #include <time.h>
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <clib/exec_protos.h>
 #include <exec/interrupts.h>
@@ -25,7 +26,7 @@
 //HP:
 #define error_t int
 #define __start_packed
-#define __end_packed
+#define __end_packed __attribute__((packed))
 #define uint_t uint16_t
 
 //get the highest byte of 16 bit only (BE??)
@@ -38,10 +39,49 @@
 #define PRIX16 "x"
 #define PRIu8 "d"
 
+//TODO: Right?
+#define MAC_MULTICAST_FILTER_SIZE 10
 
 typedef struct {
    uint16_t w[3];
 } MacAddress;
+
+/**
+ * @brief TX packet header
+ **/
+typedef struct
+{
+   uint16_t controlWord;
+   uint16_t byteCount;
+} __end_packed Ksz8851TxHeader;
+
+
+/**
+ * @brief RX packet header
+ **/
+typedef struct
+{
+   uint16_t statusWord;
+   uint16_t byteCount;
+} __end_packed Ksz8851RxHeader;
+
+
+typedef __start_packed struct
+ {
+    __start_packed union
+    {
+       uint8_t b[6];
+       uint16_t w[3];
+    };
+ } __end_packed MacAddr;
+
+ typedef struct
+ {
+    MacAddr addr;    ///<MAC address
+    uint_t refCount; ///<Reference count for the current entry
+    bool addFlag;
+    bool deleteFlag;
+ } MacFilterEntry;
 
 typedef struct {
    void * nicContext;
@@ -49,14 +89,16 @@ typedef struct {
    int linkSpeed;
    int duplexMode;
    bool linkState;
+   MacFilterEntry macMulticastFilter[MAC_MULTICAST_FILTER_SIZE];
 } NetInterface;
 
 typedef struct {
    int len;
+   uint8_t * bufferData;
 } NetBuffer;
 
 int netBufferGetLength(const NetBuffer * buffer);
-void netBufferRead(const uint8_t * srcBuffer, const NetBuffer * buffer, int offset, int length) ;
+void netBufferRead(uint8_t * srcBuffer, const NetBuffer * buffer, int offset, int length) ;
 uint16_t htons(uint16_t hostshort);
 
 #define bool_t bool
@@ -77,6 +119,8 @@ uint16_t htons(uint16_t hostshort);
 #define ETH_MAX_FRAME_SIZE 1518
 
 typedef void (*ProcessPacketFunc)(const uint8_t * buffer, int size);
+
+uint16_t swap(uint16_t);
 
 // -------------
 
@@ -471,26 +515,6 @@ typedef void (*ProcessPacketFunc)(const uint8_t * buffer, int size);
  #define TX_CTRL_TXFID            0x003F
 
 
- /**
-  * @brief TX packet header
-  **/
-
- typedef __start_packed struct
- {
-    uint16_t controlWord;
-    uint16_t byteCount;
- } __end_packed Ksz8851TxHeader;
-
-
- /**
-  * @brief RX packet header
-  **/
-
- typedef __start_packed struct
- {
-    uint16_t statusWord;
-    uint16_t byteCount;
- } __end_packed Ksz8851RxHeader;
 
 
  /**

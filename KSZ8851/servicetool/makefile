@@ -7,8 +7,8 @@
 SOURCE_TESTTOOL   = $(wildcard *.c)
 HDR 					:= $(wildcard *.h) 
 
-COMPILE_MODE		=
-COMPILE_MODE		+= -DDEBUG=1
+COMPILE_MODE		= -O3
+#COMPILE_MODE		+= -DDEBUG=1
 
 CC_OPTS           =  $(COMPILE_MODE)
 
@@ -16,7 +16,6 @@ CC_OPTS           =  $(COMPILE_MODE)
 # Use it to strip symbols from device only...
 STRIP_OPTS 		 = -s
 
-#AMIGA_EXPLORER = ./Software_Tests_and_Tools/lxamiga.pl
 
 #If not given via command line build for "MC68000"
 ifeq ($(ARCH),)
@@ -67,12 +66,10 @@ clean:
 #.c.o:
 $(BUILDDIR)/%.o:%.c $(HDR)
 	@echo "Compiling C   " $< " (cpu=68"$(ARCH)")"
-	@$(CC) -c $(CC_OPTS) -o $@ $< 
+	$(CC) -c $(CC_OPTS) -o $@ $< 
 
 #.c.s:
 $(BUILDDIR)/%.s:%.c $(HDR)
 	$(CC) -S $(CC_OPTS) $(COMPILE_MODE) -o $@ $< 
 	
-.cpp.s:
-	$(CPP) -S $(CPPFLAGS) $(COMPILE_MODE) -o $@ $< 
 

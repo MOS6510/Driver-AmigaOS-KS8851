@@ -19,6 +19,7 @@ extern void ksz8851_SoftReset(NetInterface *interface, unsigned op);
  static volatile uint8_t isr( REG(a1, NetInterface * interface) )
  {
     if (ksz8851IrqHandler(interface)) {
+       //*((uint16_t*)0xdff180) = 0xa;
        Ksz8851Context * context = (Ksz8851Context*)interface->nicContext;
        Signal(context->signalTask, (1<< context->sigNumber));
        context->signalCounter++;
@@ -171,7 +172,7 @@ extern void ksz8851_SoftReset(NetInterface *interface, unsigned op);
        ISR_RXWFDIS | ISR_RXMPDIS | ISR_LDIS | ISR_EDIS | ISR_SPIBEIS);
 
     //Configure interrupts as desired (HP: TODO do not activate until Amiga ISR is installed!)
-    ksz8851SetBit(interface, KSZ8851_REG_IER, IER_LCIE | IER_TXIE | IER_RXIE | IER_RXOIE);
+    ksz8851SetBit(interface, KSZ8851_REG_IER, IER_LCIE | /*IER_TXIE |*/ IER_RXIE | IER_RXOIE);
 
     //Enable TX operation
     ksz8851SetBit(interface, KSZ8851_REG_TXCR, TXCR_TXE);
@@ -378,6 +379,20 @@ extern void ksz8851_SoftReset(NetInterface *interface, unsigned op);
     ksz8851SetBit(interface, KSZ8851_REG_IER, IER_LCIE | IER_RXIE | ISR_RXOIS | ISR_LDIS);
  }
 
+ void dumpMem(uint8_t * data, int size) {
+    int i;
+    for (i = 0; i < size; i++) {
+       if (((i % 16) == 0)) {
+          if (i != 0) {
+             printf("\n");
+          }
+          printf("%02x: ", i);
+       }
+       printf("%02x ", data[i]);
+    }
+    printf("\n");
+ }
+
 
  /**
   * @brief Send a packet
@@ -387,8 +402,7 @@ extern void ksz8851_SoftReset(NetInterface *interface, unsigned op);
   * @return Error code
   **/
 
- error_t ksz8851SendPacket(NetInterface *interface,
-    const NetBuffer *buffer, size_t offset)
+ error_t ksz8851SendPacket(NetInterface *interface, const NetBuffer *buffer, size_t offset)
  {
     size_t n;
     size_t length;
@@ -420,16 +434,21 @@ extern void ksz8851_SoftReset(NetInterface *interface, unsigned op);
     //Copy user data
     netBufferRead(context->txBuffer, buffer, offset, length);
 
+    //HP: the structure seems to be in little endian mode!
     //Format control word
-    header.controlWord = TX_CTRL_TXIC | (context->frameId++ & TX_CTRL_TXFID);
+    header.controlWord = swap(TX_CTRL_TXIC | (context->frameId++ & TX_CTRL_TXFID));
     //Total number of bytes to be transmitted
-    header.byteCount = length;
+    header.byteCount = swap(length);
 
     //Enable TXQ write access
     ksz8851SetBit(interface, KSZ8851_REG_RXQCR, RXQCR_SDA);
+
     //Write TX packet header
+    //dumpMem((uint8_t*)&header, sizeof(Ksz8851TxHeader));
     ksz8851WriteFifo(interface, (uint8_t *) &header, sizeof(Ksz8851TxHeader));
+
     //Write data
+    //dumpMem(context->txBuffer, length);
     ksz8851WriteFifo(interface, context->txBuffer, length);
     //End TXQ write access
     ksz8851ClearBit(interface, KSZ8851_REG_RXQCR, RXQCR_SDA);
@@ -511,7 +530,7 @@ extern void ksz8851_SoftReset(NetInterface *interface, unsigned op);
   * @param[in] interface Underlying network interface
   * @return Error code
   **/
-#if 0
+#if 1
  error_t ksz8851SetMulticastFilter(NetInterface *interface)
  {
     uint_t i;
@@ -614,9 +633,9 @@ extern void ksz8851_SoftReset(NetInterface *interface, unsigned op);
 
  void ksz8851WriteFifo(NetInterface *interface, const uint8_t *data, size_t length)
  {
-    uint_t i;
+    size_t i;
 
-    //Data phase
+    //Data phase => HP: SLOW!!!!!
     for(i = 0; i < length; i+=2)
        KSZ8851_DATA_REG = data[i] | data[i+1]<<8;
 
@@ -645,7 +664,7 @@ extern void ksz8851_SoftReset(NetInterface *interface, unsigned op);
     temp = KSZ8851_DATA_REG;
     temp = KSZ8851_DATA_REG;
 
-    //Data phase
+    //Data phase => Slow!!!
     for(i = 0; i < length; i+=2)
     {
        temp = KSZ8851_DATA_REG;
