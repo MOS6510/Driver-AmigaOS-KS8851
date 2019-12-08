@@ -4,13 +4,8 @@
 # 2019 by Heiko Prüssing
 #
 
-SOURCE_TESTTOOL   = $(wildcard *.c)
+SOURCE_TESTTOOL    = $(wildcard *.c)
 HDR 					:= $(wildcard *.h) 
-
-COMPILE_MODE		= -O3
-#COMPILE_MODE		+= -DDEBUG=1
-
-CC_OPTS           =  $(COMPILE_MODE)
 
 # "strip" (from tool chain) command does not work but linker option works ????
 # Use it to strip symbols from device only...
@@ -24,7 +19,7 @@ endif
 
 BUILDDIR=build/build-$(ARCH)
 
-OS_INCLUDES                  = -Iincludes -Iincludes/sana -Iincludes/libnix -Iincludes/mui
+OS_INCLUDES                  = -Iincludes -Iincludes/sana -Iincludes/libnix
 PRJ_INCLUDES                 = -I.
                                                             
 LINKER_OPTS                	= -Llibs -nostdlib -noixemul -lnix -lamiga -lstubs 
@@ -66,10 +61,10 @@ clean:
 #.c.o:
 $(BUILDDIR)/%.o:%.c $(HDR)
 	@echo "Compiling C   " $< " (cpu=68"$(ARCH)")"
-	$(CC) -c $(CC_OPTS) -o $@ $< 
+	$(CC) -c $(CFLAGS) -o $@ $< 
 
 #.c.s:
 $(BUILDDIR)/%.s:%.c $(HDR)
-	$(CC) -S $(CC_OPTS) $(COMPILE_MODE) -o $@ $< 
+	$(CC) -S $(CFLAGS) -o $@ $< 
 	
 

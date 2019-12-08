@@ -1,27 +1,29 @@
  #ifndef _KSZ8851_DRIVER_H
  #define _KSZ8851_DRIVER_H
 
-#include <stdint.h>
-#include <stdbool.h>
-#include <stdlib.h>
 
 #include <clib/alib_protos.h>
-#include <clib/alib_stdio_protos.h>
 #include <clib/graphics_protos.h>
-#include <strings.h>
+#include <clib/exec_protos.h>
+
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <exec/types.h>
 #include <sys/types.h>
+
+#include <exec/interrupts.h>
+#include <exec/tasks.h>
+#include <hardware/intbits.h>
+
+#include <stdint.h>
+#include <stdbool.h>
 #include <time.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
-#include <clib/exec_protos.h>
-#include <exec/interrupts.h>
-#include <exec/tasks.h>
-#include <hardware/intbits.h>
+
 
 //HP:
 #define error_t int

@@ -207,7 +207,7 @@ extern void ksz8851_SoftReset(NetInterface *interface, unsigned op);
   **/
  bool_t ksz8851IrqHandler(NetInterface *interface)
  {
-    Ksz8851Context * context = (Ksz8851Context*)interface->nicContext;
+    //Ksz8851Context * context = (Ksz8851Context*)interface->nicContext;
 
     bool_t flag;
     uint16_t ier;
@@ -514,7 +514,7 @@ extern void ksz8851_SoftReset(NetInterface *interface, unsigned op);
           printf(" Packet not ok status=0x%x????\n", status);
        }
     } else {
-       printf(" Packet is marked as not valid 0x5x????\n", status);
+       printf(" Packet is marked as not valid 0x%x????\n", status);
     }
 
     //Release the current error frame from RXQ

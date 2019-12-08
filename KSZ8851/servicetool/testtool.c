@@ -4,8 +4,8 @@
  */
 
 #include <clib/alib_protos.h>
-#include <clib/alib_stdio_protos.h>
 #include <clib/graphics_protos.h>
+
 #include <strings.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
@@ -16,7 +16,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-//#include "../servicetool/ks8851.h"
 #include "ksz8851.h"
 #include "types.h"
 
@@ -364,7 +363,7 @@ void printMIB(NetInterface * ks) {
       u32 h = ksz8851ReadReg(ks, KSZ8851_REG_IADHR);
       u32 l = ksz8851ReadReg(ks, KSZ8851_REG_IADLR);
       u32 val = h << 16 | l;
-      printf("MIB 0x%02x: 0x%08lx\n", MIBRegister, val);
+      printf("MIB 0x%02x: 0x%08x\n", MIBRegister, val);
    }
 }
 
@@ -375,12 +374,46 @@ void nicNotifyLinkChange(NetInterface * interface) {
 //Wait NIC is up...
 void waitNICIsUp(NetInterface * interface) {
    do {
-      ULONG receivedSignalMask = Wait(0xffffffff);
+      Wait(0xffffffffl);
       Disable();
       ksz8851EventHandler(interface, processPacket);
       Enable();
       Delay(10);
    } while(! interface->linkState );
+}
+
+/**
+ * Send packets out...caluclate speed...
+ * @param interface
+ * @param countOfPackets
+ */
+void sendPackets(NetInterface * interface, int countOfPackets) {
+
+   uint8_t buffer[ETH_MAX_FRAME_SIZE];
+   NetBuffer nb;
+   nb.bufferData = buffer;
+   nb.len = 1514; //Mehr geht nicht????
+   int pktCount = 0;
+
+   //maximal packet size!
+   memcpy(buffer, TEST_PACKET, sizeof(TEST_PACKET));
+
+   do {
+
+      Disable();
+      error_t status = ksz8851SendPacket(interface, &nb, 0);
+      Enable();
+
+      if (status == NO_ERROR) {
+         //printf("Pkt send #%d\n", pktCount);
+      } else {
+         printf("Pkt send failed!\n");
+      }
+
+      pktCount++;
+
+   } while (pktCount < countOfPackets);
+   printf("%d pkts sent out!\n", pktCount);
 }
 
 
@@ -401,9 +434,9 @@ int main(int argc, char * argv[])
 
    printf(CLRSCR);
    printf("Amiga1200+ KSZ8851-16MLL Service Tool\nVersion %s (build %d, %s, %s)\n", VERSION, build_number, __DATE__, __TIME__);
-   printf("Memory base address of ethernet chip: 0x%lx\n", ETHERNET_BASE_ADDRESS);
-   printf("Data register at: 0x%lx (16 bit)\n", ETHERNET_BASE_ADDRESS + KS8851_REG_DATA_OFFSET);
-   printf("CMD  register at: 0x%lx (16 bit)\n", ETHERNET_BASE_ADDRESS + KS8851_REG_CMD_OFFSET );
+   printf("Memory base address of ethernet chip: 0x%x\n", ETHERNET_BASE_ADDRESS);
+   printf("Data register at: 0x%x (16 bit)\n", ETHERNET_BASE_ADDRESS + KS8851_REG_DATA_OFFSET);
+   printf("CMD  register at: 0x%x (16 bit)\n", ETHERNET_BASE_ADDRESS + KS8851_REG_CMD_OFFSET );
 
    //check all command line...
    if (argc > 1)
@@ -482,7 +515,7 @@ int main(int argc, char * argv[])
       }
 
       ksz8851EnableIrq(&interface);
-      printf("Using task signal number %d\n", context.sigNumber);
+      printf("Using task signal number %ld\n", context.sigNumber);
 
 
       // Probe for chip
@@ -498,28 +531,7 @@ int main(int argc, char * argv[])
             //Wait NIC is up...
             printf("Wait NIC is up...\n");
             waitNICIsUp(&interface);
-
-
-            NetBuffer nb;
-            nb.bufferData = TEST_PACKET;
-            nb.len = sizeof(TEST_PACKET);
-            int pktCount = 0;
-
-            do {
-
-               Disable();
-               error_t status = ksz8851SendPacket(&interface,&nb,0);
-               Enable();
-
-               if ( status == NO_ERROR) {
-                  printf("Pkt send #%d\n", pktCount);
-               } else {
-                  printf("Pkt send failed!\n");
-               }
-
-               pktCount++;
-
-            } while(pktCount < pktSendCnt);
+            sendPackets(&interface, pktSendCnt);
          }
 
          //Processing events (Polling):
