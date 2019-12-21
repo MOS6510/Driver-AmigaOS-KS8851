@@ -30,8 +30,9 @@
 #define __start_packed
 #define __end_packed __attribute__((packed))
 #define uint_t uint16_t
+#define UNUSED(x) x=x
 
-//get the highest byte of 16 bit only (BE??)
+//get the highest byte of 16 bit value only (BE??)
 #define MSB(x) (((x) >> 8) & 0xff)
 
 #define NIC_LINK_SPEED_100MBPS 100
@@ -40,6 +41,7 @@
 #define NIC_HALF_DUPLEX_MODE 2
 #define PRIX16 "x"
 #define PRIu8 "d"
+
 
 //TODO: Right?
 #define MAC_MULTICAST_FILTER_SIZE 10
@@ -85,12 +87,22 @@ typedef __start_packed struct
     bool deleteFlag;
  } MacFilterEntry;
 
-typedef struct {
-   void * nicContext;
+struct _NetInterface;
+
+typedef void (*ProcessPacketFunc)(const uint8_t * buffer, int size);
+typedef void (*ProcessLinkChange)(struct _NetInterface * interface);
+
+/**
+ * Common network device interface.
+ */
+typedef struct _NetInterface {
+   void * nicContext; //Pointer to the "private part" of the driver
    MacAddress macAddr;
    int linkSpeed;
    int duplexMode;
    bool linkState;
+   ProcessPacketFunc rxPacketFunction;    //Function that process received packets (non-isr)
+   ProcessLinkChange linkChangeFunction;  //Function that processes links state changes (non-isr)
    MacFilterEntry macMulticastFilter[MAC_MULTICAST_FILTER_SIZE];
 } NetInterface;
 
@@ -542,10 +554,10 @@ uint16_t swap(uint16_t);
  void ksz8851Tick(NetInterface *interface);
  void ksz8851EnableIrq(NetInterface *interface);
  void ksz8851DisableIrq(NetInterface *interface);
- bool_t ksz8851IrqHandler(NetInterface *interface);
- void ksz8851EventHandler(NetInterface *interface, ProcessPacketFunc processFunc);
+ bool_t ksz8851IrqHandler(register NetInterface *interface);
+ void ksz8851EventHandler(NetInterface *interface);
  error_t ksz8851SendPacket(NetInterface *interface, const NetBuffer *buffer, size_t offset);
- error_t ksz8851ReceivePacket(NetInterface *interface, ProcessPacketFunc proessFunc);
+ error_t ksz8851ReceivePacket(NetInterface *interface);
  error_t ksz8851UpdateMacAddrFilter(NetInterface *interface);
  void ksz8851WriteReg(NetInterface *interface, uint8_t address, uint16_t data);
  uint16_t ksz8851ReadReg(NetInterface *interface, uint8_t address);
@@ -555,6 +567,6 @@ uint16_t swap(uint16_t);
  void ksz8851ClearBit(NetInterface *interface, uint8_t address, uint16_t mask);
  uint32_t ksz8851CalcCrc(const void *data, size_t length);
  void ksz8851DumpReg(NetInterface *interface);
- void ksz8851_SoftReset(NetInterface *interface, unsigned op);
+ void ksz8851SoftReset(NetInterface *interface, unsigned op);
 
  #endif

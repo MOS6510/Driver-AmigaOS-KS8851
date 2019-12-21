@@ -61,10 +61,10 @@ clean:
 #.c.o:
 $(BUILDDIR)/%.o:%.c $(HDR)
 	@echo "Compiling C   " $< " (cpu=68"$(ARCH)")"
-	$(CC) -c $(CFLAGS) -o $@ $< 
+	@$(CC) -c $(CFLAGS) -o $@ $< 
 
 #.c.s:
 $(BUILDDIR)/%.s:%.c $(HDR)
-	$(CC) -S $(CFLAGS) -o $@ $< 
+	@$(CC) -S $(CFLAGS) -o $@ $< 
 	
 

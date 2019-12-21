@@ -298,8 +298,11 @@ void dumpRegister16BitMode(NetInterface *interface) {
    printf("\n");
 }
 
-
-
+/**
+ * Processes all received packages (here print out)
+ * @param buffer
+ * @param size
+ */
 void processPacket(const uint8_t * buffer, int size) {
    printf("Packet content (length=%d):\n", size);
    for (int i = 0; i < size; i++) {
@@ -371,15 +374,25 @@ void nicNotifyLinkChange(NetInterface * interface) {
    printLinkStatus(interface);
 }
 
-//Wait NIC is up...
+//Wait until NIC is connected up...
 void waitNICIsUp(NetInterface * interface) {
    do {
+      //Wait for any signal
       Wait(0xffffffffl);
+
+      //process all events
       Disable();
-      ksz8851EventHandler(interface, processPacket);
+      ksz8851EventHandler(interface);
       Enable();
+
       Delay(10);
+
+      //Check state
    } while(! interface->linkState );
+}
+
+ULONG ticksDiff(struct DateStamp * d1, struct DateStamp * d2) {
+   return (d2->ds_Minute - d1->ds_Minute) * 50 * 60 + (d2->ds_Tick - d1->ds_Tick);
 }
 
 /**
@@ -389,14 +402,21 @@ void waitNICIsUp(NetInterface * interface) {
  */
 void sendPackets(NetInterface * interface, int countOfPackets) {
 
+   #define PKT_LEN 1514
+
    uint8_t buffer[ETH_MAX_FRAME_SIZE];
    NetBuffer nb;
    nb.bufferData = buffer;
-   nb.len = 1514; //Mehr geht nicht????
+   nb.len = PKT_LEN; //Mehr geht nicht????
    int pktCount = 0;
 
    //maximal packet size!
    memcpy(buffer, TEST_PACKET, sizeof(TEST_PACKET));
+
+   struct DateStamp start;
+   struct DateStamp end;
+
+   DateStamp(&start);
 
    do {
 
@@ -413,7 +433,11 @@ void sendPackets(NetInterface * interface, int countOfPackets) {
       pktCount++;
 
    } while (pktCount < countOfPackets);
-   printf("%d pkts sent out!\n", pktCount);
+   DateStamp(&end);
+
+   ULONG diffTicks = ticksDiff(&start,&end);
+   ULONG bytesProSec = ((double)countOfPackets * PKT_LEN) / ((double)diffTicks / 50.0);
+   printf("%d pkts sent out! (in %ld ticks => %ld bytes / s)\n", pktCount, diffTicks, bytesProSec );
 }
 
 
@@ -423,11 +447,13 @@ int main(int argc, char * argv[])
    bool send = false;
    int pktSendCnt = 1;
 
-   //Init network context:
+   //Initialize network context and interface:
    memset(&interface,0,sizeof(interface));
    memset(&context,0,sizeof(context));
    interface.nicContext = &context;
    context.sigNumber = -1;
+   interface.rxPacketFunction   = processPacket;
+   interface.linkChangeFunction = nicNotifyLinkChange;
 
 
    atexit(done);
@@ -529,24 +555,25 @@ int main(int argc, char * argv[])
          if (send) {
 
             //Wait NIC is up...
-            printf("Wait NIC is up...\n");
+            printf("Wait NIC is ready...\n");
             waitNICIsUp(&interface);
             sendPackets(&interface, pktSendCnt);
          }
 
          //Processing events (Polling):
          do {
-
             //Wait for any signal:
             ULONG receivedSignalMask = Wait(0xffffffff);
-            printf("Signal: signals=#%ld, rxoverrun=%ld\n",
+            printf("Signal: signals=#%ld, overrun=#%ld\n",
                   context.signalCounter, context.rxOverrun);
+
+            //Stop if ctrl-c
             if (receivedSignalMask & SIGBREAKF_CTRL_C)
                break;
 
             //Process event on event handler...
             Disable();
-            ksz8851EventHandler(&interface, processPacket);
+            ksz8851EventHandler(&interface);
             Enable();
 
             //Print some MIBs
@@ -561,6 +588,9 @@ int main(int argc, char * argv[])
    return 0;
 }
 
+/**
+ * Exit handler. Dump register.
+ */
 void done(void) {
    //
    // Dump registers...
