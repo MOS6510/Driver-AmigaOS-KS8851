@@ -485,7 +485,7 @@ void ksz8851DisableIrq(NetInterface *interface)
 
       //Pass the packet to the upper layer
       if (interface->rxPacketFunction) {
-         interface->rxPacketFunction(context->rxBuffer + 6, rxPktLength - 6);
+         interface->rxPacketFunction(context->rxBuffer, rxPktLength);
       }
 
       //Valid packet received
@@ -625,9 +625,6 @@ void ksz8851DisableIrq(NetInterface *interface)
        KSZ8851_DATA_REG = 0x0000;
  }
 
-
-
-
  /**
   * @brief Read RX FIFO
   * @param[in] interface Underlying network interface
@@ -635,19 +632,17 @@ void ksz8851DisableIrq(NetInterface *interface)
   * @param[in] length Number of data to read
   **/
 void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length) {
-   uint16_t dummy, statusWord, byteCount;
    register uint16_t value;
 
-   //16 bit NIC: Always read 2 dummy bytes
+   //WARNING! VOLATILE! If not compiler would remove read from register! Also assign the reading from register!
+   volatile uint16_t dummy UNUSED; //VOLATILE!
+
+   //16 bit NIC: Always read 2 dummy bytes, throw away...
    dummy = KSZ8851_DATA_REG;
 
    //Read (and ignore) packet header:
-   statusWord = KSZ8851_DATA_REG;
-   byteCount  = KSZ8851_DATA_REG;
-
-   UNUSED(dummy);
-   UNUSED(statusWord);
-   UNUSED(byteCount);
+   dummy = KSZ8851_DATA_REG; //Status Word
+   dummy = KSZ8851_DATA_REG; //byte count
 
    //Size in WORDs that are DWORD aligned!
    register uint16_t sizeInWord = ((length + 3) & ~0x03) >> 1;

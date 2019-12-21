@@ -30,7 +30,7 @@
 #define __start_packed
 #define __end_packed __attribute__((packed))
 #define uint_t uint16_t
-#define UNUSED(x) x=x
+#define UNUSED __attribute__((unused))
 
 //get the highest byte of 16 bit value only (BE??)
 #define MSB(x) (((x) >> 8) & 0xff)
@@ -59,17 +59,6 @@ typedef struct
    uint16_t byteCount;
 } __end_packed Ksz8851TxHeader;
 
-
-/**
- * @brief RX packet header
- **/
-typedef struct
-{
-   uint16_t statusWord;
-   uint16_t byteCount;
-} __end_packed Ksz8851RxHeader;
-
-
 typedef __start_packed struct
  {
     __start_packed union
@@ -97,12 +86,12 @@ typedef void (*ProcessLinkChange)(struct _NetInterface * interface);
  */
 typedef struct _NetInterface {
    void * nicContext; //Pointer to the "private part" of the driver
-   MacAddress macAddr;
    int linkSpeed;
    int duplexMode;
    bool linkState;
    ProcessPacketFunc rxPacketFunction;    //Function that process received packets (non-isr)
    ProcessLinkChange linkChangeFunction;  //Function that processes links state changes (non-isr)
+   MacAddress macAddr;
    MacFilterEntry macMulticastFilter[MAC_MULTICAST_FILTER_SIZE];
 } NetInterface;
 
@@ -114,6 +103,8 @@ typedef struct {
 int netBufferGetLength(const NetBuffer * buffer);
 void netBufferRead(uint8_t * srcBuffer, const NetBuffer * buffer, int offset, int length) ;
 uint16_t htons(uint16_t hostshort);
+uint16_t swap(uint16_t);
+
 
 #define bool_t bool
 #define TRACE_INFO printf
@@ -131,10 +122,6 @@ uint16_t htons(uint16_t hostshort);
 #define memPoolFree(a) FreeVec(a)
 
 #define ETH_MAX_FRAME_SIZE 1518
-
-typedef void (*ProcessPacketFunc)(const uint8_t * buffer, int size);
-
-uint16_t swap(uint16_t);
 
 // -------------
 
@@ -537,7 +524,6 @@ uint16_t swap(uint16_t);
 
  typedef struct
  {
-    uint_t frameId;    ///<Identify a frame and its associated status
     uint8_t *txBuffer; ///<Transmit buffer
     uint8_t *rxBuffer; ///<Receive buffer
 
@@ -547,6 +533,9 @@ uint16_t swap(uint16_t);
     ULONG sigNumber;          //Number of the signal to signal task
     ULONG signalCounter;      //Number of signaled events to the task...
     ULONG rxOverrun;          //Overrun counter
+
+    uint_t frameId;    ///<Identify a frame and its associated status
+
  } Ksz8851Context;
 
 
