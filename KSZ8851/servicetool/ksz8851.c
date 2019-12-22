@@ -5,6 +5,9 @@
 #include "ksz8851.h"
 #include "isr.h"
 
+ bool dwordSwapped = false;
+
+
 /**
  * @brief Enable interrupts (must be called from right Amiga Task!)
  * @param[in] interface Underlying network interface
@@ -73,9 +76,9 @@ void ksz8851DisableIrq(NetInterface *interface)
     }
 
     //Initialize MAC address
-    /*ksz8851WriteReg(interface, KSZ8851_REG_MARH, htons(interface->macAddr.w[0]));
+    ksz8851WriteReg(interface, KSZ8851_REG_MARH, htons(interface->macAddr.w[0]));
     ksz8851WriteReg(interface, KSZ8851_REG_MARM, htons(interface->macAddr.w[1]));
-    ksz8851WriteReg(interface, KSZ8851_REG_MARL, htons(interface->macAddr.w[2]));*/
+    ksz8851WriteReg(interface, KSZ8851_REG_MARL, htons(interface->macAddr.w[2]));
 
     //Packets shorter than 64 bytes are padded and the CRC is automatically generated
     ksz8851WriteReg(interface, KSZ8851_REG_TXCR, TXCR_TXFCE | TXCR_TXPE | TXCR_TXCE);
@@ -128,11 +131,11 @@ void ksz8851DisableIrq(NetInterface *interface)
 
     ksz8851WriteReg(interface, KSZ8851_REG_ISR, 0x0000);
     ksz8851WriteReg(interface, KSZ8851_REG_GRR, op);
-    Delay(50);
+    Delay(25);
      /* wait a short time to effect reset */
     ksz8851WriteReg(interface, KSZ8851_REG_GRR, 0);
     /* wait for condition to clear */
-    Delay(50);
+    Delay(25);
 
     //Re-enable all interrupt flags again...
     ksz8851WriteReg(interface, KSZ8851_REG_ISR, oldisr);
@@ -298,9 +301,9 @@ void ksz8851DisableIrq(NetInterface *interface)
 
        //Get the total number of frames that are pending in the buffer (bits 15-8)
        uint16_t rxfctr = ksz8851ReadReg(interface, KSZ8851_REG_RXFCTR);
-       printf("raw KSZ8851_REG_RXFCTR=0x%04x\n", rxfctr);
+       //printf("raw KSZ8851_REG_RXFCTR=0x%04x\n", rxfctr);
        frameCount = MSB(rxfctr);
-       printf(" FrameCount: %d\n", frameCount);
+       TRACE_INFO(" FrameCount: %d\n", frameCount);
 
        //Process all pending packets (0-255)
        while(frameCount > 0)
@@ -331,22 +334,6 @@ void ksz8851DisableIrq(NetInterface *interface)
     //Re-enable handled interrupts again...
     ksz8851SetBit(interface, KSZ8851_REG_IER, enableMask);
  }
-
-#ifdef DEBUG
- void dumpMem(uint8_t * data, int size) {
-    int i;
-    for (i = 0; i < size; i++) {
-       if (((i % 16) == 0)) {
-          if (i != 0) {
-             printf("\n");
-          }
-          printf("%02x: ", i);
-       }
-       printf("%02x ", data[i]);
-    }
-    printf("\n");
- }
-#endif
 
  /**
   * @brief Send a packet
@@ -558,6 +545,39 @@ void ksz8851DisableIrq(NetInterface *interface)
  }
 #endif
 
+ /**
+  * Own read 16 bit registers
+  * @param ks
+  * @param offset
+  */
+ uint16_t ksz8851ReadReg(NetInterface *interface, uint8_t offset)
+ {
+    assert((offset & 1) == 0);
+
+    if (offset & 2) {
+       KSZ8851_CMD_REG = offset | (dwordSwapped ? ( KSZ8851_CMD_B0 | KSZ8851_CMD_B1) : (KSZ8851_CMD_B2 | KSZ8851_CMD_B3));
+    } else {
+       KSZ8851_CMD_REG = offset | (dwordSwapped ? ( KSZ8851_CMD_B2 | KSZ8851_CMD_B3) : (KSZ8851_CMD_B0 | KSZ8851_CMD_B1));
+    }
+    return KSZ8851_DATA_REG;
+ }
+
+ /**
+  * Own read 16 bit registers
+  * @param ks
+  * @param offset
+  */
+ void ksz8851WriteReg(NetInterface *interface, uint8_t offset, uint16_t value)
+ {
+    assert((offset & 1) == 0);
+
+    if (offset & 2) {
+       KSZ8851_CMD_REG = offset | (dwordSwapped ? ( KSZ8851_CMD_B0 | KSZ8851_CMD_B1) : (KSZ8851_CMD_B2 | KSZ8851_CMD_B3));
+    } else {
+       KSZ8851_CMD_REG = offset | (dwordSwapped ? ( KSZ8851_CMD_B2 | KSZ8851_CMD_B3) : (KSZ8851_CMD_B0 | KSZ8851_CMD_B1));
+    }
+    KSZ8851_DATA_REG = value;
+ }
 
  /**
   * @brief Write KSZ8851 register
@@ -600,6 +620,67 @@ void ksz8851DisableIrq(NetInterface *interface)
  }
 #endif
 
+ /**
+  * Own very read register 8 bit version
+  * @param ks
+  * @param offset
+  * @return
+  */
+ uint8_t ksz8851ReadReg8(NetInterface * ks, uint8_t offset) {
+    uint8_t result = 0;
+    /**
+     * Some miracle things happen when chip is set to big endian mode:
+     * Not only it swapped 16 bit values (as expected), it seems to switch all registers in a 32 bit mode
+     * behavior. => BE (Byte Enable logic) seems mirrored too. Not clear in chip manual.
+     */
+    if (!dwordSwapped) {
+       //Normal default LE (from chip manual)
+       switch (offset & 3) {
+          case 0:
+             KSZ8851_CMD_REG = offset | KSZ8851_CMD_B0;
+             result = KSZ8851_DATA_REG;
+             break;
+          case 1:
+             KSZ8851_CMD_REG = offset | KSZ8851_CMD_B1;
+             result = KSZ8851_DATA_REG >> 8;
+             break;
+          case 2:
+             KSZ8851_CMD_REG = offset | KSZ8851_CMD_B2;
+             result = KSZ8851_DATA_REG;
+             break;
+          case 3:
+             KSZ8851_CMD_REG = offset | KSZ8851_CMD_B3;
+             result = KSZ8851_DATA_REG >> 8;
+             break;
+          default:
+             break;
+       }
+    } else {
+       //When chip is set to big endian mode ???? This switches all internal registers on a 32 bit
+       //boundary to ???? Logic for BEx seems mixed too.
+       switch (offset & 3) {
+          case 0:
+             KSZ8851_CMD_REG = offset | KSZ8851_CMD_B2;
+             result = KSZ8851_DATA_REG;
+             break;
+          case 1:
+             KSZ8851_CMD_REG = offset | KSZ8851_CMD_B3;
+             result = KSZ8851_DATA_REG >> 8;
+             break;
+          case 2:
+             KSZ8851_CMD_REG = offset | KSZ8851_CMD_B0;
+             result = KSZ8851_DATA_REG;
+             break;
+          case 3:
+             KSZ8851_CMD_REG = offset | KSZ8851_CMD_B1;
+             result = KSZ8851_DATA_REG >> 8;
+             break;
+          default:
+             break;
+       }
+    }
+    return result & 0xff;
+ }
 
  /**
   * @brief Write TX FIFO

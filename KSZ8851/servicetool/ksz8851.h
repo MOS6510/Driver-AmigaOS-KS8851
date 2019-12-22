@@ -23,6 +23,7 @@
 #include <string.h>
 #include <strings.h>
 
+#include <netinet/in.h>
 
 
 //HP:
@@ -59,13 +60,13 @@ typedef struct
    uint16_t byteCount;
 } __end_packed Ksz8851TxHeader;
 
-typedef __start_packed struct
+typedef struct
  {
-    __start_packed union
+    union
     {
        uint8_t b[6];
        uint16_t w[3];
-    };
+    } __end_packed;
  } __end_packed MacAddr;
 
  typedef struct
@@ -91,7 +92,7 @@ typedef struct _NetInterface {
    bool linkState;
    ProcessPacketFunc rxPacketFunction;    //Function that process received packets (non-isr)
    ProcessLinkChange linkChangeFunction;  //Function that processes links state changes (non-isr)
-   MacAddress macAddr;
+   MacAddr macAddr;                       //The used mac address of the NIC
    MacFilterEntry macMulticastFilter[MAC_MULTICAST_FILTER_SIZE];
 } NetInterface;
 
@@ -102,7 +103,6 @@ typedef struct {
 
 int netBufferGetLength(const NetBuffer * buffer);
 void netBufferRead(uint8_t * srcBuffer, const NetBuffer * buffer, int offset, int length) ;
-uint16_t htons(uint16_t hostshort);
 uint16_t swap(uint16_t);
 
 
@@ -123,16 +123,18 @@ uint16_t swap(uint16_t);
 
 #define ETH_MAX_FRAME_SIZE 1518
 
-// -------------
+ // -------------
+
+ #define ETHERNET_BASE_ADDRESS 0xd90000
 
  //KSZ8851 data register
  #ifndef KSZ8851_DATA_REG
-    #define KSZ8851_DATA_REG *((volatile uint16_t *) 0xd90000)
+    #define KSZ8851_DATA_REG *((volatile uint16_t *) ETHERNET_BASE_ADDRESS)
  #endif
 
  //KSZ8851 command register
  #ifndef KSZ8851_CMD_REG
-    #define KSZ8851_CMD_REG *((volatile uint16_t *) 0xd90002)
+    #define KSZ8851_CMD_REG *((volatile uint16_t *) (ETHERNET_BASE_ADDRESS + 2))
  #endif
 
  //Device ID
@@ -524,8 +526,8 @@ uint16_t swap(uint16_t);
 
  typedef struct
  {
-    uint8_t *txBuffer; ///<Transmit buffer
-    uint8_t *rxBuffer; ///<Receive buffer
+    uint8_t *txBuffer; ///Transmit buffer
+    uint8_t *rxBuffer; ///Receive buffer
 
     //Amiga:
     struct Interrupt AmigaInterrupt;
@@ -534,13 +536,12 @@ uint16_t swap(uint16_t);
     ULONG signalCounter;      //Number of signaled events to the task...
     ULONG rxOverrun;          //Overrun counter
 
-    uint_t frameId;    ///<Identify a frame and its associated status
+    uint_t frameId;           //Identify a frame and its associated status
 
  } Ksz8851Context;
 
 
  error_t ksz8851Init(NetInterface *interface);
- void ksz8851Tick(NetInterface *interface);
  void ksz8851EnableIrq(NetInterface *interface);
  void ksz8851DisableIrq(NetInterface *interface);
  bool_t ksz8851IrqHandler(register NetInterface *interface);
@@ -550,6 +551,7 @@ uint16_t swap(uint16_t);
  error_t ksz8851UpdateMacAddrFilter(NetInterface *interface);
  void ksz8851WriteReg(NetInterface *interface, uint8_t address, uint16_t data);
  uint16_t ksz8851ReadReg(NetInterface *interface, uint8_t address);
+ uint8_t ksz8851ReadReg8(NetInterface * ks, uint8_t offset);
  void ksz8851WriteFifo(NetInterface *interface, const uint8_t *data, size_t length);
  void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length);
  void ksz8851SetBit(NetInterface *interface, uint8_t address, uint16_t mask);

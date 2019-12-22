@@ -20,7 +20,6 @@
 #include "types.h"
 
 int build_number = 1;
-
 static const char * VERSION = "1.2";
 
 
@@ -46,23 +45,10 @@ static uint8_t TEST_PACKET[] = "\xff\xff\xff\xff\xff\xff\x38\xc9\x86\x58\x1b\x4a
       "\x00\x00\x00\x00\x00\x00\xc0\xa8\x12\x3b";
 
 
-
-// Base address of the KSZ8851 ethernet chip in Amiga memory address space
-#define ETHERNET_BASE_ADDRESS (u32)0xd90000l
-#define KS8851_REG_DATA_OFFSET 0x00
-#define KS8851_REG_CMD_OFFSET  0x02
-
 #define RXFDPR_EMS            (1 << 11)   /* KSZ8851-16MLL */
 #define KS_MAR(_m)            (0x15 - (_m))
 #define IRQ_LDI               (1 << 3)
 
-
-#if 1
-#define BE3             0x8000      /* Byte Enable 3 */
-#define BE2             0x4000      /* Byte Enable 2 */
-#define BE1             0x2000      /* Byte Enable 1 */
-#define BE0             0x1000      /* Byte Enable 0 */
-#endif
 
 void done(void);
 
@@ -88,164 +74,13 @@ u16 swap(u16 value)
    register u16 l = value & 0xff;
    return (l << 8) | h;
 }
+
 int netBufferGetLength(const NetBuffer * buffer) {
    return buffer->len;
 }
 
 void netBufferRead(uint8_t * dstBuffer, const NetBuffer * srcBuffer, int offset, int length) {
    memcpy(dstBuffer,srcBuffer->bufferData+offset,length);
-}
-
-uint16_t htons(uint16_t hostshort) {
-   return hostshort;
-}
-
-
-/**
- * Support function writing register
- * @param value
- * @param addr
- */
-void iowrite16(u16 value, void __iomem *addr)
-{
-   //Access to the command register MUST always be swapped due to a fix hardware swapping in design.
-   if ((ULONG)addr & KS8851_REG_CMD_OFFSET)
-   {
-      //CMD register swap
-      value = swappingCmdRegValue ? swap(value) : value;
-   }
-   else
-   {
-      //DATA register swap:
-      value = swappingDataRegValue ? swap(value) : value;
-   }
-
-   //printf("iowrite16(value=0x%04x, addr=0x%lx)\n", value, addr);
-   *((volatile u16*)addr) = value;
-}
-
-/**
- * Support function reading registers
- * @param addr
- * @return
- */
-unsigned int ioread16(void __iomem *addr)
-{
-   u16 value = *((volatile u16*)addr);
-
-   //Access to the command register MUST always be swapped due to a fix hardware swapping in design.
-   if ((ULONG) addr & KS8851_REG_CMD_OFFSET)
-   {
-      //CMD register fixed swap
-      return swappingCmdRegValue ? swap(value) : value;
-   }
-   else
-   {
-      //DATA register optional swap:
-      return swappingDataRegValue ? swap(value) : value;
-   }
-}
-
-static volatile u16 * REG_DATA = (volatile u16 *)(ETHERNET_BASE_ADDRESS + KS8851_REG_DATA_OFFSET);
-static volatile u16 * REG_CMD  = (volatile u16 *)(ETHERNET_BASE_ADDRESS + KS8851_REG_CMD_OFFSET);
-
-
-const bool dwordSwapped = false;
-
-/**
- * Own very read register 8 bit version
- * @param ks
- * @param offset
- * @return
- */
-u8 KSZ8851ReadReg8(NetInterface * ks, int offset) {
-   u8 result = 0;
-   /**
-    * Some miracle things happen when chip is set to big endian mode:
-    * Not only it swapped 16 bit values (as expected), it seems to switch all registers in a 32 bit mode
-    * behavior. => BE (Byte Enable logic) seems mirrored too. Not clear in chip manual.
-    */
-   if (!dwordSwapped) {
-      //Normal default LE (from chip manual)
-      switch (offset & 3) {
-         case 0:
-            *REG_CMD = offset | BE0;
-            result = *REG_DATA;
-            break;
-         case 1:
-            *REG_CMD = offset | BE1;
-            result = *REG_DATA >> 8;
-            break;
-         case 2:
-            *REG_CMD = offset | BE2;
-            result = *REG_DATA;
-            break;
-         case 3:
-            *REG_CMD = offset | BE3;
-            result = *REG_DATA >> 8;
-            break;
-         default:
-            break;
-      }
-   } else {
-      //When chip is set to big endian mode ???? This switches all internal registers on a 32 bit
-      //boundary to ???? Logic for BEx seems mixed too.
-      switch (offset & 3) {
-         case 0:
-            *REG_CMD = offset | BE2;
-            result = *REG_DATA;
-            break;
-         case 1:
-            *REG_CMD = offset | BE3;
-            result = *REG_DATA >> 8;
-            break;
-         case 2:
-            *REG_CMD = offset | BE0;
-            result = *REG_DATA;
-            break;
-         case 3:
-            *REG_CMD = offset | BE1;
-            result = *REG_DATA >> 8;
-            break;
-         default:
-            break;
-      }
-   }
-   return result & 0xff;
-}
-
-/**
- * Own read 16 bit registers
- * @param ks
- * @param offset
- */
-uint16_t ksz8851ReadReg(NetInterface *interface, uint8_t offset)
-{
-   assert((offset & 1) == 0);
-
-   if (offset & 2) {
-      *REG_CMD = offset | (dwordSwapped ? ( BE0 | BE1) : (BE2 | BE3));
-   } else {
-      *REG_CMD = offset | (dwordSwapped ? ( BE2 | BE3) : (BE0 | BE1));
-   }
-   return *REG_DATA & 0xffff;
-}
-
-/**
- * Own read 16 bit registers
- * @param ks
- * @param offset
- */
-void ksz8851WriteReg(NetInterface *interface, uint8_t offset, uint16_t value)
-{
-   assert((offset & 1) == 0);
-
-   if (offset & 2) {
-      *REG_CMD = offset | (dwordSwapped ? ( BE0 | BE1) : (BE2 | BE3));
-   } else {
-      *REG_CMD = offset | (dwordSwapped ? ( BE2 | BE3) : (BE0 | BE1));
-   }
-   *REG_DATA = value;
 }
 
 void printCCR(NetInterface* ks) {
@@ -274,7 +109,7 @@ void dumpRegister8BitMode(NetInterface * ks) {
          }
          printf("%02x: ", i);
       }
-      printf("%02x ", KSZ8851ReadReg8(ks, i));
+      printf("%02x ", ksz8851ReadReg8(ks, i));
    }
    printf("\n");
 }
@@ -319,21 +154,18 @@ void processPacket(const uint8_t * buffer, int size) {
 
 /**
  * Print current MAC address. TODO: I'm not sure that the direction is correct...
- * @param ks
+ * @param interface
  */
-void printMAC(NetInterface * ks)
+void printMAC(NetInterface * interface)
 {
-   u8 mac[6];
+   MacAddr macaddr;
 
-   mac[0] = KSZ8851ReadReg8(ks, KS_MAR(0));
-   mac[1] = KSZ8851ReadReg8(ks, KS_MAR(1));
-   mac[2] = KSZ8851ReadReg8(ks, KS_MAR(2));
-   mac[3] = KSZ8851ReadReg8(ks, KS_MAR(3));
-   mac[4] = KSZ8851ReadReg8(ks, KS_MAR(4));
-   mac[5] = KSZ8851ReadReg8(ks, KS_MAR(5));
+   macaddr.w[0] = ntohs( ksz8851ReadReg(interface, KSZ8851_REG_MARH) );
+   macaddr.w[1] = ntohs( ksz8851ReadReg(interface, KSZ8851_REG_MARM) );
+   macaddr.w[2] = ntohs( ksz8851ReadReg(interface, KSZ8851_REG_MARL) );
 
    printf("MAC: %02x:%02x:%02x:%02x:%02x:%02x\n",
-         mac[0],mac[1],mac[2],mac[3],mac[4],mac[5]);
+         macaddr.b[0],macaddr.b[1],macaddr.b[2],macaddr.b[3],macaddr.b[4],macaddr.b[5]);
 }
 
 /**
@@ -410,8 +242,10 @@ void sendPackets(NetInterface * interface, int countOfPackets) {
    nb.len = PKT_LEN; //Mehr geht nicht????
    int pktCount = 0;
 
-   //maximal packet size!
+   //maximal packet size, copy packet
    memcpy(buffer, TEST_PACKET, sizeof(TEST_PACKET));
+   //set right mac address
+   memcpy(&buffer[6], &interface->macAddr.b[0], 6);
 
    struct DateStamp start;
    struct DateStamp end;
@@ -443,7 +277,6 @@ void sendPackets(NetInterface * interface, int countOfPackets) {
 
 int main(int argc, char * argv[])
 {
-   bool looping = false;
    bool send = false;
    int pktSendCnt = 1;
 
@@ -455,14 +288,19 @@ int main(int argc, char * argv[])
    interface.rxPacketFunction   = processPacket;
    interface.linkChangeFunction = nicNotifyLinkChange;
 
+   //First setup: Set a valid Ethernet mac address (not in EEPROM???)
+   interface.macAddr.b[0] = 0x02; //"Local + Individual address"
+   interface.macAddr.b[1] = 0x34;
+   interface.macAddr.b[2] = 0x56;
+   interface.macAddr.b[3] = 0x78;
+   interface.macAddr.b[4] = 0x9a;
+   interface.macAddr.b[5] = 0xbc;
 
    atexit(done);
 
    printf(CLRSCR);
    printf("Amiga1200+ KSZ8851-16MLL Service Tool\nVersion %s (build %d, %s, %s)\n", VERSION, build_number, __DATE__, __TIME__);
-   printf("Memory base address of ethernet chip: 0x%x\n", ETHERNET_BASE_ADDRESS);
-   printf("Data register at: 0x%x (16 bit)\n", ETHERNET_BASE_ADDRESS + KS8851_REG_DATA_OFFSET);
-   printf("CMD  register at: 0x%x (16 bit)\n", ETHERNET_BASE_ADDRESS + KS8851_REG_CMD_OFFSET );
+   printf("Memory base address of sz8851 NIC: 0x%x\n", ETHERNET_BASE_ADDRESS);
 
    //check all command line...
    if (argc > 1)
@@ -488,10 +326,6 @@ int main(int argc, char * argv[])
             swappingCmdRegValue = true;
          }
 
-         if (strcmp(argv[i], "loop") == 0) {
-            looping = true;
-         }
-
          if (strcmp(argv[i], "send") == 0) {
             send = true;
             //if (argc >= i )
@@ -499,20 +333,20 @@ int main(int argc, char * argv[])
                pktSendCnt = atoi(argv[i+1]);
             }
          }
+
+         if (strcmp(argv[i], "help") == 0) {
+            printf("\nUsage: %s le eb swapdata swapcmd\n"
+                  " le: switch chip to little endian mode\n"
+                  " eb: switch chip to big endian mode\n"
+                  " swapdata: swap every 16 bit of data register value\n"
+                  " swapcmd:  swap every 16 bit of cmd register value\n"
+                  " send x:  send small packets\n"
+                  , argv[0]);
+            exit(0);
+         }
       }
    }
-   else
-   {
-      printf("\nUsage: %s le eb swapdata swapcmd\n"
-            " le: switch chip to little endian mode\n"
-            " eb: switch chip to big endian mode\n"
-            " swapdata: swap every 16 bit of data register value\n"
-            " swapcmd:  swap every 16 bit of cmd register value\n"
-            " loop:  stay until key pressed. reporting link states\n"
-            " send x:  send small packets\n"
-            , argv[0]);
-      exit(0);
-   }
+
    printf("\n");
 
    if (switchChipToBigEndian && switchChipToLittleEndian)
@@ -540,6 +374,7 @@ int main(int argc, char * argv[])
          ksz8851WriteReg(&interface, KSZ8851_REG_RXFDPR, oldValue & ~RXFDPR_EMS); //Bit 11 = 0  => LittleEndian
       }
 
+      //Initialize the interrupt server chain...
       ksz8851EnableIrq(&interface);
       printf("Using task signal number %ld\n", context.sigNumber);
 
@@ -551,10 +386,10 @@ int main(int argc, char * argv[])
          printCCR(&interface);
          printMAC(&interface);
 
-         //Sending packets???
+         //Send packets first?
          if (send) {
 
-            //Wait NIC is up...
+            //Wait NIC is up and ready...
             printf("Wait NIC is ready...\n");
             waitNICIsUp(&interface);
             sendPackets(&interface, pktSendCnt);
@@ -564,7 +399,7 @@ int main(int argc, char * argv[])
          do {
             //Wait for any signal:
             ULONG receivedSignalMask = Wait(0xffffffff);
-            printf("Signal: signals=#%ld, overrun=#%ld\n",
+            printf("Signal: signal=#%ld, overrun=#%ld\n",
                   context.signalCounter, context.rxOverrun);
 
             //Stop if ctrl-c
@@ -581,7 +416,7 @@ int main(int argc, char * argv[])
 
             Delay(15);
 
-         } while(looping);
+         } while(true);
       }
    }
 
