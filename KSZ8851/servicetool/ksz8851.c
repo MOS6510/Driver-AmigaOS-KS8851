@@ -5,8 +5,7 @@
 #include "ksz8851.h"
 #include "isr.h"
 
- bool dwordSwapped = false;
-
+//bool isInBigEndianMode = false;
 
 /**
  * @brief Enable interrupts (must be called from right Amiga Task!)
@@ -554,10 +553,12 @@ void ksz8851DisableIrq(NetInterface *interface)
  {
     assert((offset & 1) == 0);
 
+    Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
+
     if (offset & 2) {
-       KSZ8851_CMD_REG = offset | (dwordSwapped ? ( KSZ8851_CMD_B0 | KSZ8851_CMD_B1) : (KSZ8851_CMD_B2 | KSZ8851_CMD_B3));
+       KSZ8851_CMD_REG = offset | (context->isInBigEndianMode ? ( KSZ8851_CMD_B0 | KSZ8851_CMD_B1) : (KSZ8851_CMD_B2 | KSZ8851_CMD_B3));
     } else {
-       KSZ8851_CMD_REG = offset | (dwordSwapped ? ( KSZ8851_CMD_B2 | KSZ8851_CMD_B3) : (KSZ8851_CMD_B0 | KSZ8851_CMD_B1));
+       KSZ8851_CMD_REG = offset | (context->isInBigEndianMode ? ( KSZ8851_CMD_B2 | KSZ8851_CMD_B3) : (KSZ8851_CMD_B0 | KSZ8851_CMD_B1));
     }
     return KSZ8851_DATA_REG;
  }
@@ -570,11 +571,12 @@ void ksz8851DisableIrq(NetInterface *interface)
  void ksz8851WriteReg(NetInterface *interface, uint8_t offset, uint16_t value)
  {
     assert((offset & 1) == 0);
+    Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
 
     if (offset & 2) {
-       KSZ8851_CMD_REG = offset | (dwordSwapped ? ( KSZ8851_CMD_B0 | KSZ8851_CMD_B1) : (KSZ8851_CMD_B2 | KSZ8851_CMD_B3));
+       KSZ8851_CMD_REG = offset | (context->isInBigEndianMode ? ( KSZ8851_CMD_B0 | KSZ8851_CMD_B1) : (KSZ8851_CMD_B2 | KSZ8851_CMD_B3));
     } else {
-       KSZ8851_CMD_REG = offset | (dwordSwapped ? ( KSZ8851_CMD_B2 | KSZ8851_CMD_B3) : (KSZ8851_CMD_B0 | KSZ8851_CMD_B1));
+       KSZ8851_CMD_REG = offset | (context->isInBigEndianMode ? ( KSZ8851_CMD_B2 | KSZ8851_CMD_B3) : (KSZ8851_CMD_B0 | KSZ8851_CMD_B1));
     }
     KSZ8851_DATA_REG = value;
  }
@@ -628,12 +630,13 @@ void ksz8851DisableIrq(NetInterface *interface)
   */
  uint8_t ksz8851ReadReg8(NetInterface * ks, uint8_t offset) {
     uint8_t result = 0;
+    Ksz8851Context *context = (Ksz8851Context *)ks->nicContext;
     /**
      * Some miracle things happen when chip is set to big endian mode:
      * Not only it swapped 16 bit values (as expected), it seems to switch all registers in a 32 bit mode
      * behavior. => BE (Byte Enable logic) seems mirrored too. Not clear in chip manual.
      */
-    if (!dwordSwapped) {
+    if (!context->isInBigEndianMode) {
        //Normal default LE (from chip manual)
        switch (offset & 3) {
           case 0:

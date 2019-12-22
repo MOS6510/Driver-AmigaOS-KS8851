@@ -47,9 +47,6 @@
 //TODO: Right?
 #define MAC_MULTICAST_FILTER_SIZE 10
 
-typedef struct {
-   uint16_t w[3];
-} MacAddress;
 
 /**
  * @brief TX packet header
@@ -518,8 +515,6 @@ uint16_t swap(uint16_t);
  #define TX_CTRL_TXFID            0x003F
 
 
-
-
  /**
   * @brief KSZ8851 driver context
   **/
@@ -535,7 +530,7 @@ uint16_t swap(uint16_t);
     ULONG sigNumber;          //Number of the signal to signal task
     ULONG signalCounter;      //Number of signaled events to the task...
     ULONG rxOverrun;          //Overrun counter
-
+    bool isInBigEndianMode;   //NIC is in big endian mode?
     uint_t frameId;           //Identify a frame and its associated status
 
  } Ksz8851Context;
