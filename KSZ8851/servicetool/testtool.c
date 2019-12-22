@@ -45,7 +45,6 @@ static uint8_t TEST_PACKET[] = "\xff\xff\xff\xff\xff\xff\x38\xc9\x86\x58\x1b\x4a
       "\x00\x00\x00\x00\x00\x00\xc0\xa8\x12\x3b";
 
 
-#define RXFDPR_EMS            (1 << 11)   /* KSZ8851-16MLL */
 #define KS_MAR(_m)            (0x15 - (_m))
 #define IRQ_LDI               (1 << 3)
 

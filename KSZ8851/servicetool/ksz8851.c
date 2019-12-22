@@ -95,7 +95,8 @@ void ksz8851DisableIrq(NetInterface *interface)
     //Enable automatic RXQ frame buffer dequeue
     ksz8851WriteReg(interface, KSZ8851_REG_RXQCR, RXQCR_RXFCTE | RXQCR_ADRFE);
     //Automatically increment RX data pointer
-    ksz8851WriteReg(interface, KSZ8851_REG_RXFDPR, RXFDPR_RXFPAI);
+    uint16_t val = context->isInBigEndianMode ? (RXFDPR_RXFPAI | RXFDPR_EMS) : (RXFDPR_RXFPAI);
+    ksz8851WriteReg(interface, KSZ8851_REG_RXFDPR, val);
     //Configure receive frame count threshold
     ksz8851WriteReg(interface, KSZ8851_REG_RXFCTR, 1);
 
@@ -455,7 +456,10 @@ void ksz8851DisableIrq(NetInterface *interface)
       printf(" Reading frame of %d bytes:\n", rxPktLength);
 
       //Reset QMU RXQ frame pointer to zero
-      ksz8851WriteReg(interface, KSZ8851_REG_RXFDPR, RXFDPR_RXFPAI);
+      //HINT: The endian mode can't read back! So we need to set the complete register with mode bit set or
+      //cleared!
+      uint16_t val = context->isInBigEndianMode ? (RXFDPR_RXFPAI | RXFDPR_EMS) : (RXFDPR_RXFPAI);
+      ksz8851WriteReg(interface, KSZ8851_REG_RXFDPR, val);
       //Enable RXQ read access (start DMA transfer: set bit 3)
       ksz8851SetBit(interface, KSZ8851_REG_RXQCR, RXQCR_SDA);
       //Read data to temp buffer...

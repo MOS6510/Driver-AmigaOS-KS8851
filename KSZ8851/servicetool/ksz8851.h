@@ -124,6 +124,9 @@ uint16_t swap(uint16_t);
 
  #define ETHERNET_BASE_ADDRESS 0xd90000
 
+#define RXFDPR_EMS            (1 << 11)   /* KSZ8851-16MLL */
+
+
  //KSZ8851 data register
  #ifndef KSZ8851_DATA_REG
     #define KSZ8851_DATA_REG *((volatile uint16_t *) ETHERNET_BASE_ADDRESS)
