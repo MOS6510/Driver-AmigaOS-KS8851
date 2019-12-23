@@ -227,6 +227,8 @@ ULONG ticksDiff(struct DateStamp * d1, struct DateStamp * d2) {
    return (d2->ds_Minute - d1->ds_Minute) * 50 * 60 + (d2->ds_Tick - d1->ds_Tick);
 }
 
+
+
 /**
  * Send packets out...caluclate speed...
  * @param interface
@@ -250,14 +252,15 @@ void sendPackets(NetInterface * interface, int countOfPackets) {
    struct DateStamp start;
    struct DateStamp end;
 
+   //disable NIC ints during sending...
+   uint16_t oldIER = ksz8851ReadReg(interface, KSZ8851_REG_IER);
+   ksz8851WriteReg(interface, KSZ8851_REG_IER, 0);
+
+   //Start measurement...
    DateStamp(&start);
 
    do {
-
-      Disable();
       error_t status = ksz8851SendPacket(interface, &nb, 0);
-      Enable();
-
       if (status == NO_ERROR) {
          //printf("Pkt send #%d\n", pktCount);
       } else {
@@ -267,10 +270,17 @@ void sendPackets(NetInterface * interface, int countOfPackets) {
       pktCount++;
 
    } while (pktCount < countOfPackets);
+
+   //End of measurement...
    DateStamp(&end);
 
+   //Enable NIC ints again...
+   ksz8851WriteReg(interface, KSZ8851_REG_IER, oldIER);
+
    ULONG diffTicks = ticksDiff(&start,&end);
-   ULONG bytesProSec = ((double)countOfPackets * PKT_LEN) / ((double)diffTicks / 50.0);
+   printf("Ticks: %ld\n", diffTicks);
+
+   ULONG bytesProSec = ((double)countOfPackets * PKT_LEN) * 50.0 / ((double)diffTicks);
    printf("%d pkts sent out! (in %ld ticks => %ld bytes / s)\n", pktCount, diffTicks, bytesProSec );
 }
 

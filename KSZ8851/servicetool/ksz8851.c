@@ -751,12 +751,13 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
 
  void ksz8851WriteFifo(register NetInterface *interface, register const uint8_t *data, register size_t length)
  {
-    register size_t i;
+    //register size_t i;
     Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
+    register uint16_t sizeInWord = ((length + 3) & ~0x03) >> 1;
+
 
     if (context->isInBigEndianMode) {
        //BE mode:
-       register uint16_t sizeInWord = ((length + 3) & ~0x03) >> 1;
        //copy in BE16 mode...which is faster because we do not mix the words
        register uint16_t * wordData = (uint16_t*)data;
        while (sizeInWord--) {
@@ -765,14 +766,12 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
 
     } else {
        //LE mode: (twisting)
-
-       //Data phase: Data is automatically swapped...
-       for(i = 0; i < length; i+=2)
-          KSZ8851_DATA_REG = data[i] | data[i+1]<<8;
-
-       //Maintain alignment to 4-byte boundaries
-       for(; i % 4; i+=2)
-          KSZ8851_DATA_REG = 0x0000;
+       register uint16_t val;
+       while (sizeInWord--) {
+          val = *(data++);
+          val |= ((*(data++)) << 8);
+          KSZ8851_DATA_REG = val;
+       }
     }
  }
 
