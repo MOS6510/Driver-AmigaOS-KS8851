@@ -30,6 +30,21 @@ void ksz8851DisableIrq(NetInterface *interface)
    uninstallInterruptHandler(interface);
 }
 
+void ksz8851PrintNICEndiness(Ksz8851Context * context) {
+    TRACE_INFO("Current Endian Mode: %s\n", context->isInBigEndianMode ? "BE" : "LE");
+ }
+
+ bool ksz8851DetectNICEndiness(NetInterface *interface, Ksz8851Context * context) {
+    //Check in which mode the NIC is now
+    if (ksz8851ReadReg(interface, KSZ8851_REG_CIDER) != KSZ8851_REV_A3_ID) {
+       context->isInBigEndianMode = !context->isInBigEndianMode;
+       if (ksz8851ReadReg(interface, KSZ8851_REG_CIDER) != KSZ8851_REV_A3_ID) {
+          return false;
+       }
+    }
+    return true;
+ }
+
 
  /**
   * @brief KSZ8851 controller initialization
@@ -44,18 +59,34 @@ void ksz8851DisableIrq(NetInterface *interface)
     //Debug message
     TRACE_INFO("Initializing KSZ8851 Ethernet controller...\r\n");
 
-    //For security, reset Chip first...
-    ksz8851SoftReset(interface,1);
+    //Try to detect NIC and the current endian mode...
+    uint8_t tries = 2;
+    do {
+       if (ksz8851DetectNICEndiness(interface, context)) {
+          break;
+       }
+       TRACE_INFO("Problem to detect NIC and his endian mode. Hopefully leaving reset state...\n");
+       context->isInBigEndianMode = true;
+       ksz8851WriteReg(interface, KSZ8851_REG_GRR, 0);
+       context->isInBigEndianMode = false;
+       ksz8851WriteReg(interface, KSZ8851_REG_GRR, 0);
+       //leaving in LE mode here...
+    } while(tries--);
 
-    TRACE_DEBUG("CIDER=0x%04"   PRIX16 "\r\n", ksz8851ReadReg(interface, KSZ8851_REG_CIDER));
-    TRACE_DEBUG("PHY1ILR=0x%04" PRIX16 "\r\n", ksz8851ReadReg(interface, KSZ8851_REG_PHY1ILR));
-    TRACE_DEBUG("PHY1IHR=0x%04" PRIX16 "\r\n", ksz8851ReadReg(interface, KSZ8851_REG_PHY1IHR));
+    //Make a QMU receiver reset only (hopefully keeps endian mode)
+    ksz8851SoftReset(interface,2);
 
-    //Check device ID and revision ID
-    if(ksz8851ReadReg(interface, KSZ8851_REG_CIDER) != KSZ8851_REV_A3_ID) {
-       TRACE_DEBUG("Failed!\n");
+    //Re-detect NIC after reset...
+    if (ksz8851ReadReg(interface, KSZ8851_REG_CIDER) != KSZ8851_REV_A3_ID) {
+       TRACE_INFO("Unable to detect NIC!");
        return ERROR_WRONG_IDENTIFIER;
     }
+
+    ksz8851PrintNICEndiness(context);
+
+    //TRACE_DEBUG("CIDER=0x%04"   PRIX16 "\r\n", ksz8851ReadReg(interface, KSZ8851_REG_CIDER));
+    TRACE_DEBUG("PHY1ILR=0x%04" PRIX16 "\r\n", ksz8851ReadReg(interface, KSZ8851_REG_PHY1ILR));
+    TRACE_DEBUG("PHY1IHR=0x%04" PRIX16 "\r\n", ksz8851ReadReg(interface, KSZ8851_REG_PHY1IHR));
 
     //Initialize driver specific variables
     context->frameId = 0;
@@ -118,24 +149,44 @@ void ksz8851DisableIrq(NetInterface *interface)
     //Enable RX operation
     ksz8851SetBit(interface, KSZ8851_REG_RXCR1, RXCR1_RXE);
 
-    TRACE_DEBUG("RXFCTR=0x%04"  PRIX16 "\r\n", ksz8851ReadReg(interface, KSZ8851_REG_RXFCTR));
+    //TRACE_DEBUG("RXFCTR=0x%04"  PRIX16 "\r\n", ksz8851ReadReg(interface, KSZ8851_REG_RXFCTR));
 
     //Successful initialization
     return NO_ERROR;
  }
 
- void ksz8851SoftReset(NetInterface *interface, unsigned op)
+
+
+ /**
+  * Reset the NIC.
+  * @param interface
+  * @param op 1: Global Soft Reset, 2: QMU only reset....
+  */
+ void ksz8851SoftReset(NetInterface *interface, unsigned resetOperation)
  {
+    Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
+
+    if (!ksz8851DetectNICEndiness(interface, context)) {
+       return;
+    }
+
     /* Disable interrupt first */
     uint16_t oldisr = ksz8851ReadReg(interface, KSZ8851_REG_ISR);
-
     ksz8851WriteReg(interface, KSZ8851_REG_ISR, 0x0000);
-    ksz8851WriteReg(interface, KSZ8851_REG_GRR, op);
-    Delay(25);
-     /* wait a short time to effect reset */
+
+    //Perform reset command
+    ksz8851WriteReg(interface, KSZ8851_REG_GRR, resetOperation);
+    /* wait a short time to effect reset */
+    Delay(50);
+    //release soft reset again
     ksz8851WriteReg(interface, KSZ8851_REG_GRR, 0);
     /* wait for condition to clear */
-    Delay(25);
+    Delay(50);
+
+    //Detect endiness after reset again...
+    if (!ksz8851DetectNICEndiness(interface, context)) {
+       return;
+    }
 
     //Re-enable all interrupt flags again...
     ksz8851WriteReg(interface, KSZ8851_REG_ISR, oldisr);
@@ -301,7 +352,6 @@ void ksz8851DisableIrq(NetInterface *interface)
 
        //Get the total number of frames that are pending in the buffer (bits 15-8)
        uint16_t rxfctr = ksz8851ReadReg(interface, KSZ8851_REG_RXFCTR);
-       //printf("raw KSZ8851_REG_RXFCTR=0x%04x\n", rxfctr);
        frameCount = MSB(rxfctr);
        TRACE_INFO(" FrameCount: %d\n", frameCount);
 
@@ -322,6 +372,11 @@ void ksz8851DisableIrq(NetInterface *interface)
     //Receiver overruns?
     if (status & ISR_RXOIS) {
        ((Ksz8851Context*)interface->nicContext)->rxOverrun++;
+
+       //ACK receiver overrun status by writing "1" to status...
+       ksz8851SetBit(interface, KSZ8851_REG_ISR, ISR_RXOIS);
+       TRACE_INFO(" =>>>> ACK Receiver Overrun\n");
+
        enableMask |= IER_RXOIE;
     }
 
@@ -385,11 +440,9 @@ void ksz8851DisableIrq(NetInterface *interface)
     ksz8851SetBit(interface, KSZ8851_REG_RXQCR, RXQCR_SDA);
 
     //Write TX packet header
-    //dumpMem((uint8_t*)&header, sizeof(Ksz8851TxHeader));
     ksz8851WriteFifo(interface, (uint8_t *) &header, sizeof(Ksz8851TxHeader));
 
     //Write data
-    //dumpMem(context->txBuffer, length);
     ksz8851WriteFifo(interface, context->txBuffer, length);
     //End TXQ write access
     ksz8851ClearBit(interface, KSZ8851_REG_RXQCR, RXQCR_SDA);
@@ -453,7 +506,7 @@ void ksz8851DisableIrq(NetInterface *interface)
    //Ensure the frame size is acceptable
    if (rxPktLength > 0 && rxPktLength <= ETH_MAX_FRAME_SIZE) {
 
-      printf(" Reading frame of %d bytes:\n", rxPktLength);
+      printf(" Reading frame of %d bytes: (endianess=%s)\n", rxPktLength, context->isInBigEndianMode ? "BE" : "LE");
 
       //Reset QMU RXQ frame pointer to zero
       //HINT: The endian mode can't read back! So we need to set the complete register with mode bit set or
@@ -699,18 +752,28 @@ void ksz8851DisableIrq(NetInterface *interface)
  void ksz8851WriteFifo(register NetInterface *interface, register const uint8_t *data, register size_t length)
  {
     register size_t i;
+    Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
 
-    //Original code: Data phase => HP: SLOW!!!!!
-    for(i = 0; i < length; i+=2)
-       KSZ8851_DATA_REG = data[i] | data[i+1]<<8;
+    if (context->isInBigEndianMode) {
+       //BE mode:
+       register uint16_t sizeInWord = ((length + 3) & ~0x03) >> 1;
+       //copy in BE16 mode...which is faster because we do not mix the words
+       register uint16_t * wordData = (uint16_t*)data;
+       while (sizeInWord--) {
+          KSZ8851_DATA_REG = *(wordData++);
+       }
 
-    //register uint16_t * tmpDataPtr = (uint16_t*)data;
-    //for(i = 0; i < length; i+=2)
-    //   KSZ8851_DATA_REG = *(tmpDataPtr++);
+    } else {
+       //LE mode: (twisting)
 
-    //Maintain alignment to 4-byte boundaries
-    for(; i % 4; i+=2)
-       KSZ8851_DATA_REG = 0x0000;
+       //Data phase: Data is automatically swapped...
+       for(i = 0; i < length; i+=2)
+          KSZ8851_DATA_REG = data[i] | data[i+1]<<8;
+
+       //Maintain alignment to 4-byte boundaries
+       for(; i % 4; i+=2)
+          KSZ8851_DATA_REG = 0x0000;
+    }
  }
 
  /**
@@ -721,6 +784,7 @@ void ksz8851DisableIrq(NetInterface *interface)
   **/
 void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length) {
    register uint16_t value;
+   Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
 
    //WARNING! VOLATILE! If not compiler would remove read from register! Also assign the reading from register!
    volatile uint16_t dummy UNUSED; //VOLATILE!
@@ -735,12 +799,21 @@ void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length) {
    //Size in WORDs that are DWORD aligned!
    register uint16_t sizeInWord = ((length + 3) & ~0x03) >> 1;
 
-   //TODO: It seems the word are twisted! Big endian vs. little endian!
-   //Data phase
-   while (sizeInWord--) {
-      value = KSZ8851_DATA_REG;
-      *(data++) = value & 0xFF;
-      *(data++) = (value >> 8) & 0xFF;
+   //Data phase:
+   if (context->isInBigEndianMode) {
+      //copy in BE16 mode...which is faster because we do not mix the words
+      register uint16_t * wordData = (uint16_t*)data;
+      while (sizeInWord--) {
+         *(wordData++) = KSZ8851_DATA_REG;
+      }
+
+   } else {
+      //Copy LE Mode (twisting bytes)
+      while (sizeInWord--) {
+         value = KSZ8851_DATA_REG;
+         *(data++) = value & 0xFF;
+         *(data++) = (value >> 8) & 0xFF;
+      }
    }
 }
 

@@ -62,6 +62,7 @@ BOOL swappingDataRegValue     = false;
 BOOL swappingCmdRegValue      = false;
 BOOL switchChipToBigEndian    = false;
 BOOL switchChipToLittleEndian = false;
+BOOL resetCmd = FALSE;
 
 /**
  * Swaps a 16 bit value...0x1234 => 0x3412
@@ -273,6 +274,21 @@ void sendPackets(NetInterface * interface, int countOfPackets) {
    printf("%d pkts sent out! (in %ld ticks => %ld bytes / s)\n", pktCount, diffTicks, bytesProSec );
 }
 
+/**
+ * Change endianness mode of the NIC
+ * @param bigEndian
+ */
+void switchEndianessMode(bool bigEndian) {
+   printf("Switching chip to %s mode.\n", bigEndian ? "big endian" : "little endian");
+   u16 value = ksz8851ReadReg(&interface, KSZ8851_REG_RXFDPR);
+   if (bigEndian) {
+      value |= RXFDPR_EMS; //Bit 11 = 1   => BigEndian, Bit can't read back!
+   }
+   ksz8851WriteReg(&interface, KSZ8851_REG_RXFDPR, value);
+   //Change mode so that all functions still can talk to the chip!
+   context.isInBigEndianMode = bigEndian;
+}
+
 
 int main(int argc, char * argv[])
 {
@@ -298,8 +314,8 @@ int main(int argc, char * argv[])
    atexit(done);
 
    printf(CLRSCR);
-   printf("Amiga1200+ KSZ8851-16MLL Service Tool\nVersion %s (build %d, %s, %s)\n", VERSION, build_number, __DATE__, __TIME__);
-   printf("Memory base address of sz8851 NIC: 0x%x\n", ETHERNET_BASE_ADDRESS);
+   printf("Amiga1200+ NIC KSZ8851-16MLL Service Tool\nVersion %s (build %d, %s, %s)\n", VERSION, build_number, __DATE__, __TIME__);
+   printf("Memory base address of NIC ksz8851: 0x%x\n", ETHERNET_BASE_ADDRESS);
 
    //check all command line...
    if (argc > 1)
@@ -324,6 +340,10 @@ int main(int argc, char * argv[])
          if (strcmp(argv[i], "swapcmd") == 0) {
             swappingCmdRegValue = true;
          }
+
+         if (strcmp(argv[i], "reset") == 0) {
+                     resetCmd = true;
+                  }
 
          if (strcmp(argv[i], "send") == 0) {
             send = true;
@@ -359,29 +379,33 @@ int main(int argc, char * argv[])
          printf("%s-tool is swapping every 16 bit data during chip access.\n", argv[0]);
       }
 
-      //Set chip to big endian?
-      if (switchChipToBigEndian) {
-         printf("Switching chip to big endian mode.\n");
-         u16 oldValue = ksz8851ReadReg(&interface, KSZ8851_REG_RXFDPR);
-         ksz8851WriteReg(&interface, KSZ8851_REG_RXFDPR, oldValue | RXFDPR_EMS); //Bit 11 = 1   => BigEndian
-      }
-
-      //Set chip to little endian?
-      if (switchChipToLittleEndian) {
-         printf("Switching chip to little endian mode.\n");
-         u16 oldValue = ksz8851ReadReg(&interface, KSZ8851_REG_RXFDPR);
-         ksz8851WriteReg(&interface, KSZ8851_REG_RXFDPR, oldValue & ~RXFDPR_EMS); //Bit 11 = 0  => LittleEndian
-      }
-
       //Initialize the interrupt server chain...
       ksz8851EnableIrq(&interface);
-      printf("Using task signal number %ld\n", context.sigNumber);
 
 
       // Probe for chip
       error_t probing = ksz8851Init(&interface);
       if (probing == NO_ERROR)
       {
+         if (resetCmd) {
+            ksz8851SoftReset(&interface,1); //=> Global Soft Reset!
+            //Will set it back to LE mode...
+            context.isInBigEndianMode = false;
+            exit(0);
+         }
+
+         //Set chip to big endian?
+         if (switchChipToBigEndian) {
+            switchEndianessMode(true);
+            exit(0);
+         }
+
+         //Set chip to little endian?
+         if (switchChipToLittleEndian) {
+            switchEndianessMode(false);
+            exit(0);
+         }
+
          printCCR(&interface);
          printMAC(&interface);
 
@@ -391,6 +415,7 @@ int main(int argc, char * argv[])
             //Wait NIC is up and ready...
             printf("Wait NIC is ready...\n");
             waitNICIsUp(&interface);
+            printf("Sending packets %d...\n", pktSendCnt);
             sendPackets(&interface, pktSendCnt);
          }
 
