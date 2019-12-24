@@ -279,6 +279,11 @@ int main(int argc, char * argv[])
    address->b[4] = 0x9a;
    address->b[5] = 0xbc;
 
+   //Set the Multicast cache filter:
+   MacFilterEntry multicastsFilter[1];
+   memset(multicastsFilter,0,sizeof(MacFilterEntry));
+
+
    //check all command line...
    if (argc > 1)
    {
@@ -315,6 +320,20 @@ int main(int argc, char * argv[])
             }
          }
 
+         if (strcmp(argv[i], "setmulticast") == 0) {
+
+
+
+              multicastsFilter[0].refCount = 1;
+               //Set "239.12.255.253" => SMA Energy Meter Protocol
+               multicastsFilter[0].addr.b[0] = 0x01; //"Local + Individual address"
+               multicastsFilter[0].addr.b[1] = 0x0;
+               multicastsFilter[0].addr.b[2] = 0x5e;
+               multicastsFilter[0].addr.b[3] = 0x0c; //12
+               multicastsFilter[0].addr.b[4] = 0xff; //255
+               multicastsFilter[0].addr.b[5] = 0xfe; //254
+         }
+
          if (strcmp(argv[i], "help") == 0) {
             printf("\nUsage: %s le eb swapdata swapcmd\n"
                   " le: switch chip to little endian mode\n"
@@ -322,6 +341,7 @@ int main(int argc, char * argv[])
                   " swapdata: swap every 16 bit of data register value\n"
                   " swapcmd:  swap every 16 bit of cmd register value\n"
                   " send x:  send small packets\n"
+                  " setmulticast: sets the multicast address 239.12.255.254\n"
                   , argv[0]);
             exit(0);
          }
@@ -345,6 +365,10 @@ int main(int argc, char * argv[])
       error_t probing = interface->init(interface);
       if (probing == NO_ERROR)
       {
+         //Updates the multicast filer...
+         ksz8851SetMulticastFilter(interface, multicastsFilter, 1);
+
+
          if (resetCmd) {
             interface->reset(interface,1); //=> Global Soft Reset!
             exit(0);

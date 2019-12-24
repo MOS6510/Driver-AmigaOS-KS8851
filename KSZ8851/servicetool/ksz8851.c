@@ -532,7 +532,7 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
   * @return Error code
   **/
 #if 1
- error_t ksz8851SetMulticastFilter(NetInterface *interface)
+ error_t ksz8851SetMulticastFilter(NetInterface *interface, MacFilterEntry filter[], uint8_t fileEntries)
  {
     uint_t i;
     uint_t k;
@@ -548,10 +548,10 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
 
     //The MAC filter table contains the multicast MAC addresses
     //to accept when receiving an Ethernet frame
-    for(i = 0; i < MAC_MULTICAST_FILTER_SIZE; i++)
+    for(i = 0; i < fileEntries; i++)
     {
        //Point to the current entry
-       entry = &interface->macMulticastFilter[i];
+       entry = &filter[i];
 
        //Valid entry?
        if(entry->refCount > 0)

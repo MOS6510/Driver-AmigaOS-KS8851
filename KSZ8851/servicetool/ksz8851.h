@@ -495,5 +495,6 @@ uint16_t swap(uint16_t);
  uint32_t ksz8851CalcCrc(const void *data, size_t length);
  void ksz8851DumpReg(NetInterface *interface);
  void ksz8851SoftReset(NetInterface *interface, uint8_t op);
+ error_t ksz8851SetMulticastFilter(NetInterface *interface, MacFilterEntry filter[], uint8_t fileEntries);
 
  #endif
