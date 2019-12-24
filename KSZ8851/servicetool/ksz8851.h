@@ -25,27 +25,13 @@
 
 #include <netinet/in.h>
 
-
-//HP:
-#define error_t int
-#define __start_packed
-#define __end_packed __attribute__((packed))
-#define uint_t uint16_t
-#define UNUSED __attribute__((unused))
+#include "ksz8851-public.h"
 
 //get the highest byte of 16 bit value only (BE??)
 #define MSB(x) (((x) >> 8) & 0xff)
 
-#define NIC_LINK_SPEED_100MBPS 100
-#define NIC_LINK_SPEED_10MBPS 10
-#define NIC_FULL_DUPLEX_MODE 1
-#define NIC_HALF_DUPLEX_MODE 2
 #define PRIX16 "x"
 #define PRIu8 "d"
-
-
-//TODO: Right?
-#define MAC_MULTICAST_FILTER_SIZE 10
 
 
 /**
@@ -57,51 +43,7 @@ typedef struct
    uint16_t byteCount;
 } __end_packed Ksz8851TxHeader;
 
-typedef struct
- {
-    union
-    {
-       uint8_t b[6];
-       uint16_t w[3];
-    } __end_packed;
- } __end_packed MacAddr;
-
- typedef struct
- {
-    MacAddr addr;    ///<MAC address
-    uint_t refCount; ///<Reference count for the current entry
-    bool addFlag;
-    bool deleteFlag;
- } MacFilterEntry;
-
-struct _NetInterface;
-
-typedef void (*ProcessPacketFunc)(const uint8_t * buffer, int size);
-typedef void (*ProcessLinkChange)(struct _NetInterface * interface);
-
-/**
- * Common network device interface.
- */
-typedef struct _NetInterface {
-   void * nicContext; //Pointer to the "private part" of the driver
-   int linkSpeed;
-   int duplexMode;
-   bool linkState;
-   ProcessPacketFunc rxPacketFunction;    //Function that process received packets (non-isr)
-   ProcessLinkChange linkChangeFunction;  //Function that processes links state changes (non-isr)
-   MacAddr macAddr;                       //The used mac address of the NIC
-   MacFilterEntry macMulticastFilter[MAC_MULTICAST_FILTER_SIZE];
-} NetInterface;
-
-typedef struct {
-   int len;
-   uint8_t * bufferData;
-} NetBuffer;
-
-int netBufferGetLength(const NetBuffer * buffer);
-void netBufferRead(uint8_t * srcBuffer, const NetBuffer * buffer, int offset, int length) ;
 uint16_t swap(uint16_t);
-
 
 #define bool_t bool
 #define TRACE_INFO printf
@@ -519,22 +461,18 @@ uint16_t swap(uint16_t);
 
 
  /**
-  * @brief KSZ8851 driver context
+  * KSZ8851 driver private context
   **/
-
  typedef struct
  {
-    uint8_t *txBuffer; ///Transmit buffer
-    uint8_t *rxBuffer; ///Receive buffer
-
-    //Amiga:
-    struct Interrupt AmigaInterrupt;
-    struct Task * signalTask; //Amiga Signal task to signal
-    ULONG sigNumber;          //Number of the signal to signal task
-    ULONG signalCounter;      //Number of signaled events to the task...
-    ULONG rxOverrun;          //Overrun counter
-    bool isInBigEndianMode;   //NIC is in big endian mode?
-    uint_t frameId;           //Identify a frame and its associated status
+    uint8_t *rxBuffer;                 //Receive buffer (max)
+    struct Interrupt AmigaInterrupt;   //The hardware interrupt
+    struct Task * signalTask;          //Amiga Signal task to signal
+    ULONG sigNumber;                   //Number of the signal to signal task
+    ULONG signalCounter;               //Number of signaled events to the task...
+    ULONG rxOverrun;                   //Overrun counter
+    bool isInBigEndianMode;            //NIC is in big endian mode?
+    uint_t frameId;                    //Identify a frame and its associated status
 
  } Ksz8851Context;
 
@@ -544,7 +482,7 @@ uint16_t swap(uint16_t);
  void ksz8851DisableIrq(NetInterface *interface);
  bool_t ksz8851IrqHandler(register NetInterface *interface);
  void ksz8851EventHandler(NetInterface *interface);
- error_t ksz8851SendPacket(NetInterface *interface, const NetBuffer *buffer, size_t offset);
+ error_t ksz8851SendPacket(NetInterface *interface, uint8_t * buffer, size_t length);
  error_t ksz8851ReceivePacket(NetInterface *interface);
  error_t ksz8851UpdateMacAddrFilter(NetInterface *interface);
  void ksz8851WriteReg(NetInterface *interface, uint8_t address, uint16_t data);
@@ -556,6 +494,6 @@ uint16_t swap(uint16_t);
  void ksz8851ClearBit(NetInterface *interface, uint8_t address, uint16_t mask);
  uint32_t ksz8851CalcCrc(const void *data, size_t length);
  void ksz8851DumpReg(NetInterface *interface);
- void ksz8851SoftReset(NetInterface *interface, unsigned op);
+ void ksz8851SoftReset(NetInterface *interface, uint8_t op);
 
  #endif

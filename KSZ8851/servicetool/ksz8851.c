@@ -5,7 +5,6 @@
 #include "ksz8851.h"
 #include "isr.h"
 
-//bool isInBigEndianMode = false;
 
 /**
  * @brief Enable interrupts (must be called from right Amiga Task!)
@@ -92,14 +91,12 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
     context->frameId = 0;
 
     //Allocate TX and RX buffers (4 bytes more because DMA is always DWORD aligned, so transfer could be 3 bytes longer)
-    context->txBuffer = memPoolAlloc(ETH_MAX_FRAME_SIZE + 4);
     context->rxBuffer = memPoolAlloc(ETH_MAX_FRAME_SIZE + 4);
 
     //Failed to allocate memory?
-    if(context->txBuffer == NULL || context->rxBuffer == NULL)
+    if(context->rxBuffer == NULL)
     {
        //Clean up side effects
-       memPoolFree(context->txBuffer);
        memPoolFree(context->rxBuffer);
 
        return ERROR_OUT_OF_MEMORY;
@@ -162,7 +159,7 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
   * @param interface
   * @param op 1: Global Soft Reset, 2: QMU only reset....
   */
- void ksz8851SoftReset(NetInterface *interface, unsigned resetOperation)
+ void ksz8851SoftReset(NetInterface *interface, uint8_t resetOperation)
  {
     Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
 
@@ -398,18 +395,14 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
   * @return Error code
   **/
 
- error_t ksz8851SendPacket(NetInterface *interface, const NetBuffer *buffer, size_t offset)
+ error_t ksz8851SendPacket(NetInterface *interface, uint8_t * buffer, size_t length)
  {
     size_t n;
-    size_t length;
     Ksz8851TxHeader header;
     Ksz8851Context *context;
 
     //Point to the driver context
     context = (Ksz8851Context *) interface->nicContext;
-
-    //Retrieve the length of the packet
-    length = netBufferGetLength(buffer) - offset;
 
     //Check the frame length
     if(length > ETH_MAX_FRAME_SIZE)
@@ -428,7 +421,7 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
        return ERROR_FAILURE;
 
     //Copy user data
-    netBufferRead(context->txBuffer, buffer, offset, length);
+    //netBufferRead(context->txBuffer, buffer, 0, length);
 
     //HP: the structure seems to be in little endian mode!
     //Format control word
@@ -443,7 +436,7 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
     ksz8851WriteFifo(interface, (uint8_t *) &header, sizeof(Ksz8851TxHeader));
 
     //Write data
-    ksz8851WriteFifo(interface, context->txBuffer, length);
+    ksz8851WriteFifo(interface, buffer, length);
     //End TXQ write access
     ksz8851ClearBit(interface, KSZ8851_REG_RXQCR, RXQCR_SDA);
 
@@ -884,5 +877,58 @@ void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length) {
 
     //Return CRC value
     return crc;
+ }
+
+ /**
+  * Dump registers in 16 bit mode
+  * @param ks
+  */
+ void ksz8851DumpReg(NetInterface *interface) {
+    int i;
+    printf("\nRegister dump ( 128 x 16-bit ):\n");
+    for (i = 0; i < 256; i+=2) {
+       if (((i % 16) == 0)) {
+          if (i != 0) {
+             printf("\n");
+          }
+          printf("%02x: ", i);
+       }
+       printf("%04x ", ksz8851ReadReg(interface, i));
+    }
+    printf("\n");
+ }
+
+
+ // -------------------------------- Driver Interface Level -------------------------------------------------
+
+ static error_t init(NetInterface * interface) {
+    ksz8851EnableIrq(interface);
+    return ksz8851Init(interface);
+ }
+
+ static void deinit(NetInterface * interface) {
+    ksz8851DisableIrq(interface);
+    ksz8851DumpReg(interface);
+ }
+
+ static void nullFunction(NetInterface * interface) {
+    //Nothing
+ }
+
+ static Ksz8851Context context = { .signalTask = NULL, .sigNumber = -1 };
+ static const NetInterface driverInterface = {
+       .init            = init,
+       .deinit          = deinit,
+       .online          = nullFunction,
+       .offline         = nullFunction,
+       .reset           = ksz8851SoftReset,
+       .processEvents   = ksz8851EventHandler,
+       .sendPacket      = ksz8851SendPacket,
+       .getDefaltNetworkAddress = 0l,
+       .nicContext = (Ksz8851Context*)&context,
+ };
+
+ extern const NetInterface * initModule() {
+    return &driverInterface;
  }
 

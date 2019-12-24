@@ -36,9 +36,7 @@ static const char * VERSION = "1.2";
 
 // ########################################## EXTERNALS #####################################################
 
-static Ksz8851Context context = { .signalTask = NULL, .sigNumber = -1 };
-static NetInterface interface = { .nicContext = (Ksz8851Context*)&context };
-
+NetInterface * interface = NULL;
 
 static uint8_t TEST_PACKET[] = "\xff\xff\xff\xff\xff\xff\x38\xc9\x86\x58\x1b\x4a\x08\x06\x00\x01" \
       "\x08\x00\x06\x04\x00\x01\x38\xc9\x86\x58\x1b\x4a\xc0\xa8\x12\x04" \
@@ -96,45 +94,7 @@ void printCCR(NetInterface* ks) {
 }
 
 /**
- * Dump registers in 8 bit mode
- * @param ks
- */
-void dumpRegister8BitMode(NetInterface * ks) {
-   int i;
-   printf("\nRegister dump ( 256 x 8-bit ):\n");
-   for (i = 0; i < 256; i++) {
-      if (((i % 16) == 0)) {
-         if (i != 0) {
-            printf("\n");
-         }
-         printf("%02x: ", i);
-      }
-      printf("%02x ", ksz8851ReadReg8(ks, i));
-   }
-   printf("\n");
-}
-
-/**
- * Dump registers in 16 bit mode
- * @param ks
- */
-void dumpRegister16BitMode(NetInterface *interface) {
-   int i;
-   printf("\nRegister dump ( 128 x 16-bit ):\n");
-   for (i = 0; i < 256; i+=2) {
-      if (((i % 16) == 0)) {
-         if (i != 0) {
-            printf("\n");
-         }
-         printf("%02x: ", i);
-      }
-      printf("%04x ", ksz8851ReadReg(interface, i));
-   }
-   printf("\n");
-}
-
-/**
- * Processes all received packages (here print out)
+ * Processes all received packages (here only print out)
  * @param buffer
  * @param size
  */
@@ -153,7 +113,7 @@ void processPacket(const uint8_t * buffer, int size) {
 }
 
 /**
- * Print current MAC address. TODO: I'm not sure that the direction is correct...
+ * Print current MAC address.
  * @param interface
  */
 void printMAC(NetInterface * interface)
@@ -239,15 +199,14 @@ void sendPackets(NetInterface * interface, int countOfPackets) {
    #define PKT_LEN 1514
 
    uint8_t buffer[ETH_MAX_FRAME_SIZE];
-   NetBuffer nb;
-   nb.bufferData = buffer;
-   nb.len = PKT_LEN; //Mehr geht nicht????
-   int pktCount = 0;
 
    //maximal packet size, copy packet
    memcpy(buffer, TEST_PACKET, sizeof(TEST_PACKET));
    //set right mac address
    memcpy(&buffer[6], &interface->macAddr.b[0], 6);
+
+   int pktCount = 0;
+
 
    struct DateStamp start;
    struct DateStamp end;
@@ -260,7 +219,7 @@ void sendPackets(NetInterface * interface, int countOfPackets) {
    DateStamp(&start);
 
    do {
-      error_t status = ksz8851SendPacket(interface, &nb, 0);
+      error_t status = interface->sendPacket(interface, buffer, PKT_LEN);
       if (status == NO_ERROR) {
          //printf("Pkt send #%d\n", pktCount);
       } else {
@@ -289,15 +248,17 @@ void sendPackets(NetInterface * interface, int countOfPackets) {
  * @param bigEndian
  */
 void switchEndianessMode(bool bigEndian) {
+   Ksz8851Context * context = (Ksz8851Context *)interface->nicContext;
    printf("Switching chip to %s mode.\n", bigEndian ? "big endian" : "little endian");
-   u16 value = ksz8851ReadReg(&interface, KSZ8851_REG_RXFDPR);
+   u16 value = ksz8851ReadReg(interface, KSZ8851_REG_RXFDPR);
    if (bigEndian) {
       value |= RXFDPR_EMS; //Bit 11 = 1   => BigEndian, Bit can't read back!
    }
-   ksz8851WriteReg(&interface, KSZ8851_REG_RXFDPR, value);
+   ksz8851WriteReg(interface, KSZ8851_REG_RXFDPR, value);
    //Change mode so that all functions still can talk to the chip!
-   context.isInBigEndianMode = bigEndian;
+   context->isInBigEndianMode = bigEndian;
 }
+
 
 
 int main(int argc, char * argv[])
@@ -305,27 +266,27 @@ int main(int argc, char * argv[])
    bool send = false;
    int pktSendCnt = 1;
 
-   //Initialize network context and interface:
-   memset(&interface,0,sizeof(interface));
-   memset(&context,0,sizeof(context));
-   interface.nicContext = &context;
-   context.sigNumber = -1;
-   interface.rxPacketFunction   = processPacket;
-   interface.linkChangeFunction = nicNotifyLinkChange;
-
-   //First setup: Set a valid Ethernet mac address (not in EEPROM???)
-   interface.macAddr.b[0] = 0x02; //"Local + Individual address"
-   interface.macAddr.b[1] = 0x34;
-   interface.macAddr.b[2] = 0x56;
-   interface.macAddr.b[3] = 0x78;
-   interface.macAddr.b[4] = 0x9a;
-   interface.macAddr.b[5] = 0xbc;
-
-   atexit(done);
-
    printf(CLRSCR);
    printf("Amiga1200+ NIC KSZ8851-16MLL Service Tool\nVersion %s (build %d, %s, %s)\n", VERSION, build_number, __DATE__, __TIME__);
    printf("Memory base address of NIC ksz8851: 0x%x\n", ETHERNET_BASE_ADDRESS);
+
+   atexit(done);
+
+   interface = (NetInterface*)initModule();
+   Ksz8851Context * context = (Ksz8851Context*)interface->nicContext;
+
+   //Add Stack methods (callbacks) to the driver...
+   interface->rxPacketFunction   = processPacket;
+   interface->linkChangeFunction = nicNotifyLinkChange;
+
+   //First setup: Set a valid Ethernet mac address (not in EEPROM???)
+   MacAddr * address = &interface->macAddr;
+   address->b[0] = 0x02; //"Local + Individual address"
+   address->b[1] = 0x34;
+   address->b[2] = 0x56;
+   address->b[3] = 0x78;
+   address->b[4] = 0x9a;
+   address->b[5] = 0xbc;
 
    //check all command line...
    if (argc > 1)
@@ -389,23 +350,17 @@ int main(int argc, char * argv[])
          printf("%s-tool is swapping every 16 bit data during chip access.\n", argv[0]);
       }
 
-      //Initialize the interrupt server chain...
-      ksz8851EnableIrq(&interface);
-
-
       // Probe for chip
-      error_t probing = ksz8851Init(&interface);
+      error_t probing = interface->init(interface);
       if (probing == NO_ERROR)
       {
          if (resetCmd) {
-            ksz8851SoftReset(&interface,1); //=> Global Soft Reset!
-            //Will set it back to LE mode...
-            context.isInBigEndianMode = false;
+            interface->reset(interface,1); //=> Global Soft Reset!
             exit(0);
          }
 
          //Set chip to big endian?
-         if (switchChipToBigEndian) {
+         if (switchChipToBigEndian){
             switchEndianessMode(true);
             exit(0);
          }
@@ -416,17 +371,17 @@ int main(int argc, char * argv[])
             exit(0);
          }
 
-         printCCR(&interface);
-         printMAC(&interface);
+         printCCR(interface);
+         printMAC(interface);
 
          //Send packets first?
          if (send) {
 
             //Wait NIC is up and ready...
             printf("Wait NIC is ready...\n");
-            waitNICIsUp(&interface);
+            waitNICIsUp(interface);
             printf("Sending packets %d...\n", pktSendCnt);
-            sendPackets(&interface, pktSendCnt);
+            sendPackets(interface, pktSendCnt);
          }
 
          //Processing events (Polling):
@@ -434,7 +389,7 @@ int main(int argc, char * argv[])
             //Wait for any signal:
             ULONG receivedSignalMask = Wait(0xffffffff);
             printf("Signal: signal=#%ld, overrun=#%ld\n",
-                  context.signalCounter, context.rxOverrun);
+                  context->signalCounter, context->rxOverrun);
 
             //Stop if ctrl-c
             if (receivedSignalMask & SIGBREAKF_CTRL_C)
@@ -442,7 +397,7 @@ int main(int argc, char * argv[])
 
             //Process event on event handler...
             Disable();
-            ksz8851EventHandler(&interface);
+            interface->processEvents(interface);
             Enable();
 
             //Print some MIBs
@@ -461,13 +416,6 @@ int main(int argc, char * argv[])
  * Exit handler. Dump register.
  */
 void done(void) {
-   //
-   // Dump registers...
-   //
-   Disable();
-   //dumpRegister8BitMode(&interface);
-   dumpRegister16BitMode(&interface);
-   Enable();
-
-   ksz8851DisableIrq(&interface);
+   interface->deinit(interface);
+   interface = NULL;
 }
