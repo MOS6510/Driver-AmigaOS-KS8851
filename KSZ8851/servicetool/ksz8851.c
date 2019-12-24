@@ -22,7 +22,7 @@ void ksz8851EnableIrq(NetInterface *interface)
  **/
 void ksz8851DisableIrq(NetInterface *interface)
 {
-   //Disable interrupts to release the interrupt line
+   //Disable all NIC interrupts to release the interrupt line
    Disable();
    ksz8851WriteReg(interface, KSZ8851_REG_IER, 0);
    Enable();
@@ -145,8 +145,6 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
     ksz8851SetBit(interface, KSZ8851_REG_TXCR, TXCR_TXE);
     //Enable RX operation
     ksz8851SetBit(interface, KSZ8851_REG_RXCR1, RXCR1_RXE);
-
-    //TRACE_DEBUG("RXFCTR=0x%04"  PRIX16 "\r\n", ksz8851ReadReg(interface, KSZ8851_REG_RXFCTR));
 
     //Successful initialization
     return NO_ERROR;
@@ -394,7 +392,6 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
   * @param[in] offset Offset to the first data byte
   * @return Error code
   **/
-
  error_t ksz8851SendPacket(NetInterface *interface, uint8_t * buffer, size_t length)
  {
     size_t n;
@@ -420,10 +417,7 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
     if((length + 8) > n)
        return ERROR_FAILURE;
 
-    //Copy user data
-    //netBufferRead(context->txBuffer, buffer, 0, length);
-
-    //HP: the structure seems to be in little endian mode!
+    //HP: the structure seems to be fix little endian!
     //Format control word
     header.controlWord = swap(TX_CTRL_TXIC | (context->frameId++ & TX_CTRL_TXFID));
     //Total number of bytes to be transmitted
@@ -499,7 +493,7 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
    //Ensure the frame size is acceptable
    if (rxPktLength > 0 && rxPktLength <= ETH_MAX_FRAME_SIZE) {
 
-      printf(" Reading frame of %d bytes: (endianess=%s)\n", rxPktLength, context->isInBigEndianMode ? "BE" : "LE");
+      printf(" Reading frame of %d bytes:\n", rxPktLength);
 
       //Reset QMU RXQ frame pointer to zero
       //HINT: The endian mode can't read back! So we need to set the complete register with mode bit set or
@@ -512,12 +506,6 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
       ksz8851ReadFifo(interface, context->rxBuffer, rxPktLength);
       //End RXQ read access (clear the bit!)
       ksz8851ClearBit(interface, KSZ8851_REG_RXQCR, RXQCR_SDA);
-
-      //Because there is a header of
-      // - 2 bytes dummy
-      // - 4 bytes CRC
-      //of each packet, ignore these...
-      //These is configurable!
 
       //Pass the packet to the upper layer
       if (interface->rxPacketFunction) {
@@ -678,6 +666,7 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
   * @param offset
   * @return
   */
+#if 0
  uint8_t ksz8851ReadReg8(NetInterface * ks, uint8_t offset) {
     uint8_t result = 0;
     Ksz8851Context *context = (Ksz8851Context *)ks->nicContext;
@@ -734,6 +723,7 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
     }
     return result & 0xff;
  }
+#endif
 
  /**
   * @brief Write TX FIFO
@@ -766,6 +756,16 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
           KSZ8851_DATA_REG = val;
        }
     }
+ }
+
+ /**
+  * Checks if enough space to send packet
+  * @param interface
+  * @param packetSize
+  * @return
+  */
+ bool ksz8851SendPacketPossible(NetInterface *interface, uint16_t packetSize) {
+    return (ksz8851ReadReg(interface, KSZ8851_REG_TXMIR) + 8) <= packetSize;
  }
 
  /**
@@ -901,6 +901,12 @@ void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length) {
 
  // -------------------------------- Driver Interface Level -------------------------------------------------
 
+ static void getDefaultMacAddress(NetInterface * interface, MacAddr * addr) {
+     addr->w[0] = ntohs( ksz8851ReadReg(interface, KSZ8851_REG_MARH) );
+     addr->w[1] = ntohs( ksz8851ReadReg(interface, KSZ8851_REG_MARM) );
+     addr->w[2] = ntohs( ksz8851ReadReg(interface, KSZ8851_REG_MARL) );
+  }
+
  static error_t init(NetInterface * interface) {
     ksz8851EnableIrq(interface);
     return ksz8851Init(interface);
@@ -915,16 +921,20 @@ void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length) {
     //Nothing
  }
 
- static Ksz8851Context context = { .signalTask = NULL, .sigNumber = -1 };
+ static Ksz8851Context context = {
+       .signalTask = NULL,
+       .sigNumber = -1
+ };
  static const NetInterface driverInterface = {
-       .init            = init,
-       .deinit          = deinit,
-       .online          = nullFunction,
-       .offline         = nullFunction,
-       .reset           = ksz8851SoftReset,
-       .processEvents   = ksz8851EventHandler,
-       .sendPacket      = ksz8851SendPacket,
-       .getDefaltNetworkAddress = 0l,
+       .init               = init,
+       .deinit             = deinit,
+       .online             = nullFunction,
+       .offline            = nullFunction,
+       .reset              = ksz8851SoftReset,
+       .processEvents      = ksz8851EventHandler,
+       .sendPacketPossible = ksz8851SendPacketPossible,
+       .sendPacket         = ksz8851SendPacket,
+       .getDefaultNetworkAddress = getDefaultMacAddress,
        .nicContext = (Ksz8851Context*)&context,
  };
 

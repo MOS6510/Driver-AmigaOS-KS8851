@@ -73,14 +73,6 @@ u16 swap(u16 value)
    return (l << 8) | h;
 }
 
-int netBufferGetLength(const NetBuffer * buffer) {
-   return buffer->len;
-}
-
-void netBufferRead(uint8_t * dstBuffer, const NetBuffer * srcBuffer, int offset, int length) {
-   memcpy(dstBuffer,srcBuffer->bufferData+offset,length);
-}
-
 void printCCR(NetInterface* ks) {
    u16 val = ksz8851ReadReg(ks, KSZ8851_REG_CCR);
    printf("ChipConfReg: 0x%04x (endianMode=%s,EEPROM=%s,8bit=%s,16bit=%s,48pin=%s)\n",
@@ -183,16 +175,15 @@ void waitNICIsUp(NetInterface * interface) {
    } while(! interface->linkState );
 }
 
+/*
+ * Helper function: calculates difference of two tick counter...
+ */
 ULONG ticksDiff(struct DateStamp * d1, struct DateStamp * d2) {
    return (d2->ds_Minute - d1->ds_Minute) * 50 * 60 + (d2->ds_Tick - d1->ds_Tick);
 }
 
-
-
-/**
- * Send packets out...caluclate speed...
- * @param interface
- * @param countOfPackets
+/*
+ * Send some packets out. Calculate speed.
  */
 void sendPackets(NetInterface * interface, int countOfPackets) {
 
@@ -206,7 +197,6 @@ void sendPackets(NetInterface * interface, int countOfPackets) {
    memcpy(&buffer[6], &interface->macAddr.b[0], 6);
 
    int pktCount = 0;
-
 
    struct DateStamp start;
    struct DateStamp end;
@@ -267,7 +257,8 @@ int main(int argc, char * argv[])
    int pktSendCnt = 1;
 
    printf(CLRSCR);
-   printf("Amiga1200+ NIC KSZ8851-16MLL Service Tool\nVersion %s (build %d, %s, %s)\n", VERSION, build_number, __DATE__, __TIME__);
+   printf("Amiga1200+ NIC KSZ8851-16MLL Service Tool\nVersion %s (build %d, %s, %s)\n",
+         VERSION, build_number, __DATE__, __TIME__);
    printf("Memory base address of NIC ksz8851: 0x%x\n", ETHERNET_BASE_ADDRESS);
 
    atexit(done);
