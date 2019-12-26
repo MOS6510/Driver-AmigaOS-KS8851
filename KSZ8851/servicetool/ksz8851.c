@@ -121,7 +121,8 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
        RXCR2_SRDBL2 | RXCR2_IUFFP | RXCR2_RXIUFCEZ);
 
     //Enable automatic RXQ frame buffer dequeue
-    ksz8851WriteReg(interface, KSZ8851_REG_RXQCR, RXQCR_RXFCTE | RXQCR_ADRFE);
+    //+ add 2 extra dummy byte (before dest address) for 4-byte alignment of packet data (RXQCR_RXIPHTOE):
+    ksz8851WriteReg(interface, KSZ8851_REG_RXQCR, RXQCR_RXFCTE | RXQCR_ADRFE | RXQCR_RXIPHTOE);
     //Automatically increment RX data pointer
     uint16_t val = context->isInBigEndianMode ? (RXFDPR_RXFPAI | RXFDPR_EMS) : (RXFDPR_RXFPAI);
     ksz8851WriteReg(interface, KSZ8851_REG_RXFDPR, val);
@@ -452,6 +453,16 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
     uint16_t frameStatus;
     Ksz8851Context *context;
 
+    //WARNING! VOLATILE! If not compiler would remove read from register! Also assign the reading from register!
+    volatile uint16_t dummy UNUSED; //VOLATILE!
+
+    struct EthernetRxPacketHead {
+       uint16_t alignmentDummyBytes; //only when "RXIPHTOE" is set in "RXQCR"
+       MacAddr destAddress;
+       MacAddr sourceAddress;
+       uint16_t packetType;
+    } __end_packed packetHeader;
+
     //Point to the driver context
     context = (Ksz8851Context *)interface->nicContext;
 
@@ -493,8 +504,6 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
    //Ensure the frame size is acceptable
    if (rxPktLength > 0 && rxPktLength <= ETH_MAX_FRAME_SIZE) {
 
-      printf(" Reading frame of %d bytes:\n", rxPktLength);
-
       //Reset QMU RXQ frame pointer to zero
       //HINT: The endian mode can't read back! So we need to set the complete register with mode bit set or
       //cleared!
@@ -502,14 +511,30 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
       ksz8851WriteReg(interface, KSZ8851_REG_RXFDPR, val);
       //Enable RXQ read access (start DMA transfer: set bit 3)
       ksz8851SetBit(interface, KSZ8851_REG_RXQCR, RXQCR_SDA);
-      //Read data to temp buffer...
-      ksz8851ReadFifo(interface, context->rxBuffer, rxPktLength);
+
+      //16 bit NIC: Always read 2 dummy bytes, throw away...
+      dummy = KSZ8851_DATA_REG;
+      //Read (and ignore) packet header:
+      dummy = KSZ8851_DATA_REG; //Status Word
+      dummy = KSZ8851_DATA_REG; //byte count
+
+      //Read 16 frame header first...
+      ksz8851ReadFifo(interface, (uint8_t*)&packetHeader, sizeof(packetHeader));
+      //TODO:  Ask the receive if he really wants the packet!
+      //Read rest of the frame...
+      rxPktLength -= sizeof(packetHeader);
+      ksz8851ReadFifo(interface, context->rxBuffer, rxPktLength );
+
       //End RXQ read access (clear the bit!)
       ksz8851ClearBit(interface, KSZ8851_REG_RXQCR, RXQCR_SDA);
 
       //Pass the packet to the upper layer
       if (interface->rxPacketFunction) {
-         interface->rxPacketFunction(context->rxBuffer, rxPktLength);
+         interface->rxPacketFunction(
+               &packetHeader.destAddress,
+               &packetHeader.sourceAddress,
+               (uint16_t)ntohs(packetHeader.packetType),
+               context->rxBuffer, rxPktLength);
       }
 
       //Valid packet received
@@ -777,16 +802,6 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
 void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length) {
    register uint16_t value;
    Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
-
-   //WARNING! VOLATILE! If not compiler would remove read from register! Also assign the reading from register!
-   volatile uint16_t dummy UNUSED; //VOLATILE!
-
-   //16 bit NIC: Always read 2 dummy bytes, throw away...
-   dummy = KSZ8851_DATA_REG;
-
-   //Read (and ignore) packet header:
-   dummy = KSZ8851_DATA_REG; //Status Word
-   dummy = KSZ8851_DATA_REG; //byte count
 
    //Size in WORDs that are DWORD aligned!
    register uint16_t sizeInWord = ((length + 3) & ~0x03) >> 1;

@@ -90,8 +90,27 @@ void printCCR(NetInterface* ks) {
  * @param buffer
  * @param size
  */
-void processPacket(const uint8_t * buffer, int size) {
-   printf("Packet content (length=%d):\n", size);
+void processPacket(MacAddr * src, MacAddr * dst, uint16_t packetType, uint8_t * buffer, uint16_t size ) {
+   printf(" Packet src=%02x:%02x:%02x:%02x:%02x:%02x dst=%02x:%02x:%02x:%02x:%02x:%02x\n type=0x%04x\n",
+
+         src->b[0],
+         src->b[1],
+         src->b[2],
+         src->b[3],
+         src->b[4],
+         src->b[5],
+
+         dst->b[0],
+         dst->b[1],
+         dst->b[2],
+         dst->b[3],
+         dst->b[4],
+         dst->b[5],
+
+         packetType
+                );
+
+   printf(" Packet content (length=%d):\n", size);
    for (int i = 0; i < size; i++) {
       if (((i % 16) == 0)) {
          if (i != 0) {
