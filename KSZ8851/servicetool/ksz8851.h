@@ -18,10 +18,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <time.h>
-#include <assert.h>
-#include <stdlib.h>
 #include <string.h>
-#include <strings.h>
 
 #include <netinet/in.h>
 
@@ -32,7 +29,6 @@
 
 #define PRIX16 "x"
 #define PRIu8 "d"
-
 
 /**
  * @brief TX packet header
@@ -46,8 +42,17 @@ typedef struct
 uint16_t swap(uint16_t);
 
 #define bool_t bool
-#define TRACE_INFO printf
-#define TRACE_DEBUG printf
+
+
+#ifdef DEBUG
+extern void traceout(char * format, ...);
+#define TRACE_INFO traceout
+#define TRACE_DEBUG traceout
+#else
+#define TRACE_INFO(...)
+#define TRACE_DEBUG(...)
+#endif
+
 
 #define ERROR_WRONG_IDENTIFIER -1
 #define ERROR_OUT_OF_MEMORY -2

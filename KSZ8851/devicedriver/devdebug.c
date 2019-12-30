@@ -33,6 +33,15 @@ void printdebug(short dbLevel, char * format, ...)
    }
 }
 
+void traceout(char * format, ...) {
+   Disable();
+   va_list args;
+   va_start(args,format);
+   KVPrintF(format, args);
+   va_end( args );
+   Enable();
+}
+
 void print(short dbLevel, char * text)
 {
    Disable();

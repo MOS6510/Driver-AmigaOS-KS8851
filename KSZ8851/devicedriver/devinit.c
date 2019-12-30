@@ -18,9 +18,9 @@
 #include <libinit.h>
 
 #include "devdebug.h"
-#include "tools.h"
-#include "helper.h"
 #include "device.h"
+#include "helper.h"
+#include "tools.h"
 #include "version.h"
 
 

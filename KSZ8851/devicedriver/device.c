@@ -8,6 +8,8 @@
 
 // ############################## INCLUDES ####################################
 
+#include "device.h"
+
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include <proto/intuition.h>
@@ -51,15 +53,13 @@
 
 #include <string.h>
 
-#include "devdebug.h"
-#include "tools.h"
-#include "version.h"  
-#include "device.h"
-
 #include "configfile.h"
-#include "hal.h"
-#include "helper.h"
 #include "copybuffs.h"
+#include "devdebug.h"
+#include "helper.h"
+#include "hwl/hal.h"
+#include "tools.h"
+#include "version.h"
 
 // ############################## GLOBALS #####################################
 

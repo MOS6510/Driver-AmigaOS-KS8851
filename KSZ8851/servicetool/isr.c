@@ -71,9 +71,7 @@
 
  void uninstallInterruptHandler(NetInterface * interface)
  {
-    assert(interface);
     Ksz8851Context * context = (Ksz8851Context*)interface->nicContext;
-    assert(context);
     if(context->signalTask)
     {
        //Free interrupt and signal number...

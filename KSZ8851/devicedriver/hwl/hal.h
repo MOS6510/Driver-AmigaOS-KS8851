@@ -11,7 +11,8 @@
 #define __HAL__H
 
 #include <sys/types.h>
-#include "device.h"
+
+#include "../device.h"
 
 //The default config file of the SANA2 device
 #define DEFAULT_DEVICE_CONFIG_FILE "env:sana2/" DEVICE_NAME ".config"

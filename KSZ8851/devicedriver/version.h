@@ -14,7 +14,7 @@
 
 //It seems that the date should be in format (dd Mmm yyyy).
 //Only than AmigaOS (3.x) version command can extract it.
-#define DEVICE_VERSION_DATE "(23 Nov 2019)"
+#define DEVICE_VERSION_DATE "(27 Dec 2019)"
 
 // ---------------------- Do not change anything behind that line -------------------------------------------
 

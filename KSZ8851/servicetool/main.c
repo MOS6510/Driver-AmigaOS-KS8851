@@ -62,16 +62,6 @@ BOOL switchChipToBigEndian    = false;
 BOOL switchChipToLittleEndian = false;
 BOOL resetCmd = FALSE;
 
-/**
- * Swaps a 16 bit value...0x1234 => 0x3412
- * @param value
- */
-u16 swap(u16 value)
-{
-   register u16 h = (value >> 8) & 0xff;
-   register u16 l = value & 0xff;
-   return (l << 8) | h;
-}
 
 void printCCR(NetInterface* ks) {
    u16 val = ksz8851ReadReg(ks, KSZ8851_REG_CCR);
@@ -444,6 +434,17 @@ int main(int argc, char * argv[])
    }
 
    return 0;
+}
+
+/**
+ * For debugging the hardware near part...
+ * @param format
+ */
+void traceout(char * format, ...) {
+   va_list args;
+   va_start(args,format);
+   vprintf(format, args);
+   va_end( args );
 }
 
 /**

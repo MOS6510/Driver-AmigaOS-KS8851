@@ -5,43 +5,56 @@
 #
 
 DEVICE_NAME   = ksz8851.device
-		   
-# Base relative a4 register test (020):
-#CFLAGS		+= -fbaserel32 -msmall-code -DBASEREL=1
-#LDOPTS      += -fbaserel32 -msmall-code
-
-# Strip symbols if needed...
-#LDOPTS += -s
+HWL_LIB       = libdummyhwl.a
 
 # Build subdirectory for every supported microprocessor (68000-68080)
 BUILDDIR=build/build-$(ARCH)
                             
-SRC += $(wildcard *.c)
-HDR += $(wildcard *.h) 
+SRC     += $(wildcard *.c)
+HDR     += $(wildcard *.h) 
+SRC_HWL += $(wildcard hwl/*.c)
 
-#Make sure "devinit.o" is the first object file when linking...
+HWL_LIB_PATH := $(BUILDDIR)/$(HWL_LIB)
+
+ifeq ($(HWL),)
+else
+	HWL_LIB_PATH = $(HWL)
+endif	
+
+#Make sure "devinit.o" is the first object file during linking!
 FIRST_LINK_OBJECT = devinit.c 
 SRC_TMP := $(SRC)
 SRC = $(filter-out $(FIRST_LINK_OBJECT), $(SRC_TMP))
 SRC := $(FIRST_LINK_OBJECT) $(SRC)
 
 #Create List of objects from list of sources...
-OBJS = $(patsubst %.c, $(BUILDDIR)/%.o, $(SRC))
+OBJS     = $(patsubst %.c, $(BUILDDIR)/%.o, $(SRC))
+OBJS_HWL = $(patsubst %.c, $(BUILDDIR)/%.o, $(SRC_HWL))
                     
-                                                            
+                                                           
 LDOPTS += -noixemul -nostartfiles -lnix -lamiga -ldebug -lstubs
 LDOPTS += -Wl,-Map,$@.map -Wl,--cref 
 CFLAGS += -Wno-pointer-sign
 CFLAGS += -DDEVICE_NAME=\"$(DEVICE_NAME)\"
-#LDOPTS += --verbose
 
+.PHONY: all distribution builddir clean
 
-.PHONY: all distribution
+all: builddir $(BUILDDIR)/$(DEVICE_NAME).$(ARCH)
 
-all: builddir $(BUILDDIR)/$(DEVICE_NAME) devinit.s device.s
+addToAdf:
+	@echo "Add to ADF file:" $(ARCH)
+	@$(XDFTOOL) $(ADFIMAGE) delete "network/"$(DEVICE_NAME).$(ARCH) || true
+	@$(XDFTOOL) $(ADFIMAGE) write  $(BUILDDIR)/$(DEVICE_NAME).$(ARCH) "network"
      
 builddir:
+	@echo "Create build dir..." 
 	@mkdir -p $(BUILDDIR)
+	@mkdir -p $(BUILDDIR)/hwl
+	
+# This is a dummy lib for a dummy hardware...
+$(BUILDDIR)/libdummyhwl.a: $(OBJS_HWL)
+		@echo "Create Linking Library..." $@
+		$(AR) rcs $@ $^
 
 # Creates distribution (and build all architechtures and LHA file at the end)
 distribution:	
@@ -51,21 +64,20 @@ distribution:
 	@make clean device ARCH=060
 	@./build-installation.sh
 	
-device: $(BUILDDIR)/$(DEVICE_NAME) 
-
-$(BUILDDIR)/$(DEVICE_NAME):	$(OBJS)
+$(BUILDDIR)/$(DEVICE_NAME).$(ARCH):	$(OBJS)
 		@echo "Linking       " $@
-		@$(LD) $^ -o $@.$(ARCH) $(LDOPTS)
-		@strings $@.$(ARCH) | grep '$$VER'
-		@ls -la $@.$(ARCH)
+		$(LD) $^ $(HWL_LIB_PATH) -o $@ $(LDOPTS) 
+		@strings $@ | grep '$$VER'
+		$(MAKE) addToAdf
+		@ls -la $@
 		
 clean:
 		rm -rf -d *.o *.s *.aobj *.device *.map mapfile $(BUILDDIR)/*.o $(BUILDDIR)/*.device
 		rm -fr build/  $(BUILDDIR)
 
-$(BUILDDIR)/%.o:%.c $(HDR)
+$(BUILDDIR)/%.o:%.c
 	@echo "Compiling C   " $< " (68"$(ARCH)")"
-	@$(CC) -c $(CFLAGS) -o $@ $< 
+	$(CC) -c $(CFLAGS) -o $@ $< 
 
 .c.s: $(HDR)
 	@echo "Compiling C (only to ASM) " $< " (68"$(ARCH)")"

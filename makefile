@@ -8,12 +8,15 @@ CCPATH							   = /opt/Amiga
 CC                            = $(CCPATH)/bin/m68k-amigaos-gcc 
 CXX                           = $(CCPATH)/bin/m68k-amigaos-g++
 AR                            = $(CCPATH)/bin/m68k-amigaos-ar
+NM                            = $(CCPATH)/bin/m68k-amigaos-nm
 RANLIB							   = $(CCPATH)/bin/m68k-amigaos-ranlib
 LD                       		= $(CCPATH)/bin/m68k-amigaos-gcc
 SHELL                         = sh
 XDFTOOL								= /usr/local/bin/xdftool
 AMIGA_EXPLORER                = $(PWD)/tools/lxamiga.pl
 INC_SRCH_PATH						:= -I$(PROJ_ROOT)/os_includes/sana
+
+ADFIMAGE								:= $(PROJ_ROOT)/build/Amiga1200+Tools.adf
 
 CFLAGS								+= -Os \
 										-fstrength-reduce \
@@ -24,34 +27,43 @@ CFLAGS								+= -Os \
                               -m68$(ARCH) \
 										-fomit-frame-pointer \
                               -msoft-float
-                               
-#-fno-builtin-printf \                         
+                                        
+LDFLAGS 								+= -Llibs -noixemul                                                 
                               
 #If not given via command line, build for "68000"
 ifeq ($(ARCH),)
 	ARCH=000
-endif			
+endif		
+
+BUILDDIR								:= build
+
+#This is the hardware near code which should be used by the device (HAL)
+HWL  = ../servicetool/build/build-$(ARCH)/libksz8851.a
                           
-export CCPATH CC LD CXX CFLAGS LDFLAGS RANLIB LD AOS_INCLUDES OS_INCLUDES CFLAGS ARCH PROJ_ROOT XDFTOOL AMIGA_EXPLORER
+export CCPATH CC LD CXX CFLAGS LDFLAGS RANLIB AR LD AOS_INCLUDES OS_INCLUDES CFLAGS ARCH PROJ_ROOT XDFTOOL AMIGA_EXPLORER HWL NM ADFIMAGE
+
+.PHONY: install clean all debug
 
 # Release version: make
 all: 	CFLAGS += -s
+all: 	LDFLAGS += -s
 all:
 	@$(MAKE) -C KSZ8851/servicetool
-	@$(MAKE) -C KSZ8851/driver
+	@$(MAKE) -C KSZ8851/devicedriver
+	$(XDFTOOL) $(ADFIMAGE) list
 	
 # Debug version: make debug
-debug:	CFLAGS += -DDEBUG -g
+debug:  CFLAGS += -DDEBUG -g
 debug:
-	@$(MAKE) -C KSZ8851/servicetool 
-	@$(MAKE) -C KSZ8851/driver 
+	@$(MAKE) -C KSZ8851/servicetool
+	@$(MAKE) -C KSZ8851/devicedriver  
 	
 install:
-	@$(MAKE) -C KSZ8851/servicetool install
-
-
-.PHONY: clean
+	@$(MAKE) -C KSZ8851/servicetool   install
+	@$(MAKE) -C KSZ8851/devicedriver
 
 clean:
-	@$(MAKE) -C KSZ8851/servicetool clean
-	@$(MAKE) -C KSZ8851/driver clean
+	@$(MAKE) -C KSZ8851/servicetool  clean
+	@$(MAKE) -C KSZ8851/devicedriver clean
+	rm -f $(ADFIMAGE)
+	

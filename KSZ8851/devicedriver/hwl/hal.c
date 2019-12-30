@@ -19,10 +19,33 @@
 #include <proto/graphics.h>
 #include <time.h>
 
-#include "devdebug.h"
 #include "hal.h"
-#include "tools.h"
-#include "version.h"
+
+#include "../devdebug.h"
+#include "../tools.h"
+
+#include <clib/alib_protos.h>
+#include <clib/graphics_protos.h>
+#include <clib/exec_protos.h>
+
+#include <proto/exec.h>
+#include <proto/dos.h>
+#include <exec/types.h>
+#include <sys/types.h>
+
+#include <exec/interrupts.h>
+#include <exec/tasks.h>
+#include <hardware/intbits.h>
+
+#include <stdint.h>
+#include <stdbool.h>
+#include <time.h>
+#include <assert.h>
+//#include <stdlib.h>
+//#include <string.h>
+//#include <strings.h>
+
+//#include <netinet/in.h>
 
 // ----------------------------- CONSTS ---------------------------------------------------------------------
 
@@ -45,6 +68,7 @@ typedef void (*VoidFunc )(void);
  */
 bool hal_probe()
 {
+   //printf("Test");
    DEBUGOUT((1, "hal_probe\n"));
    return true;
 }

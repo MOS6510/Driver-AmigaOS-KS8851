@@ -4,47 +4,53 @@
 # 2019 by Heiko Prüssing
 #
 
-SOURCE_TESTTOOL    = $(wildcard *.c)
-HDR 					:= $(wildcard *.h) 
-
-# "strip" (from tool chain) command does not work but linker option works ????
-# Use it to strip symbols from device only...
-STRIP_OPTS 		 = -s
-
+SRC      := $(wildcard *.c)
+HDR 	   := $(wildcard *.h) 
+SRC_MAIN := main.c
+SRC_LIB  := $(filter-out $(SRC_MAIN), $(SRC))
 
 #If not given via command line build for "MC68000"
 ifeq ($(ARCH),)
 	ARCH=000
 endif	
 
-BUILDDIR=build/build-$(ARCH)
-
-OS_INCLUDES                  = -Iincludes -Iincludes/sana -Iincludes/libnix
-PRJ_INCLUDES                 = -I.
-                                                            
+BUILDDIR = build/build-$(ARCH)
+OS_INCLUDES                   = -Iincludes -Iincludes/sana -Iincludes/libnix                                                    
 LINKER_OPTS                	= -Llibs -nostdlib -noixemul -lnix -lamiga -lstubs 
+#All objects:
+OBJ       							= $(patsubst %.c, $(BUILDDIR)/%.o, $(SRC))
+#All objects of the linker lib:
+OBJ_LIB    							= $(patsubst %.c, $(BUILDDIR)/%.o, $(SRC_LIB))
+#All objects of the cnsole program:
+OBJ_MAIN								= $(patsubst %.c, $(BUILDDIR)/%.o, $(SRC_MAIN))
 
-OBJECTS_TESTTOOL       			= $(patsubst %.c, $(BUILDDIR)/%.o, $(SOURCE_TESTTOOL))
+LDFLAGS += -L$(BUILDDIR)
 
-ADFIMAGE								= Amiga1200+.adf
 
-.PHONY: all distribution
+.PHONY: all distribution builddir install clean
 
-all: builddir $(BUILDDIR)/ksz8851 $(BUILDDIR)/$(ADFIMAGE) $(BUILDDIR)/ksz8851.s
+all: builddir $(BUILDDIR)/ksz8851
 
-$(BUILDDIR)/$(ADFIMAGE):
-	@echo "Create ADF image..."
-	@$(XDFTOOL) $@ format "Amiga1200+" + makedir "network" + write $(BUILDDIR)/ksz8851 "network"
-	@$(XDFTOOL) $@ list
+addToADF:
+	@echo "Create ADF file..." 
+	@$(XDFTOOL) $(ADFIMAGE) format "Amiga1200+Tools" + makedir "network" || true
+	@$(XDFTOOL) $(ADFIMAGE) delete "network/ksz8851" || true
+	@$(XDFTOOL) $(ADFIMAGE) write $(BUILDDIR)/ksz8851 "network"
+
 	
-     
 builddir:
 	@echo "Create build directories..."
 	@mkdir -p $(BUILDDIR)
 		
-$(BUILDDIR)/ksz8851:	$(OBJECTS_TESTTOOL)
+$(BUILDDIR)/ksz8851:	$(OBJ_MAIN) $(BUILDDIR)/libksz8851.a
 		@echo "Linking       " $@
-		@$(LD) $^ $(STRIP_OPTS) -o $@ -noixemul -Llibs -O2 -Wl,-Map,$@.map 
+		@$(LD) $^ $(LDFLAGS) -o $@ -lksz8851 -Wl,-Map,$@.map 
+		$(MAKE) addToADF
+		
+$(BUILDDIR)/libksz8851.a: $(OBJ_LIB)
+		@echo "Create Linking Library " $@ 
+		@$(AR) rcs $@ $^
+#		$(NM) -s $@
 		
 		
 # Installs device on real Amiga via "Amiga Explorer"
@@ -56,15 +62,14 @@ install:
 		$(AMIGA_EXPLORER) -s $(BUILDDIR)/ksz8851 RAD:/ksz8851	
 		
 clean:
-		rm -r -f -d $(BUILDDIR)/* *.o *.s *.aobj *.map mapfile
+		rm -r -f -d $(BUILDDIR) *.o *.s *.aobj *.map mapfile
 
 #.c.o:
 $(BUILDDIR)/%.o:%.c $(HDR)
 	@echo "Compiling C   " $< " (cpu=68"$(ARCH)")"
-	@$(CC) -c $(CFLAGS) -o $@ $< 
+	$(CC) -c $(CFLAGS) -o $@ $< 
 
 #.c.s:
 $(BUILDDIR)/%.s:%.c $(HDR)
 	@$(CC) -S $(CFLAGS) -o $@ $< 
 	
-

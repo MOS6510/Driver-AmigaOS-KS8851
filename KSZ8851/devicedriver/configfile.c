@@ -5,6 +5,7 @@
 */
 
 //Auto open libraries...
+
 #include "configfile.h"
 
 #include <proto/dos.h>
@@ -21,6 +22,7 @@
 #include <exec/alerts.h>
 
 #include <strings.h>
+
 
 
 #define LINE_MAX_LEN 255

@@ -5,6 +5,10 @@
 #include "ksz8851.h"
 #include "isr.h"
 
+//Do not use these functions. They cause linker errors on the device...
+#define printf(...) DoNotusePrintf
+#define assert(...) DoNotusePrintf
+
 
 /**
  * @brief Enable interrupts (must be called from right Amiga Task!)
@@ -469,12 +473,12 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
     //Read received frame status from RXFHSR
     frameStatus = ksz8851ReadReg(interface, KSZ8851_REG_RXFHSR);
 
-    printf(" Receiving frame (status=0x%04x):\n", frameStatus);
+    TRACE_INFO(" Receiving frame (status=0x%04x):\n", frameStatus);
 
    //Make sure the frame is valid (bit 15 must be 1)
    if (0 == (frameStatus & RXFHSR_RXFV)) {
 
-      printf(" Pkt is not valid! ");
+      TRACE_INFO(" Pkt is not valid! ");
 
       if (frameStatus & (
               RXFHSR_RXMR         //MII Error
@@ -486,13 +490,13 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
             | RXFHSR_RXIPFCS      //IP crc error
             | RXFHSR_RXICMPFCS    //ICMP crc error
       )) {
-         printf(" Pkt is error packet!");
+         TRACE_INFO(" Pkt is error packet!");
 
          //Release the current error frame from RXQ
          ksz8851SetBit(interface, KSZ8851_REG_RXQCR, RXQCR_RRXEF);
       }
 
-      printf("\n");
+      TRACE_INFO("\n");
 
       //Report an error
       return ERROR_INVALID_PACKET;
@@ -541,7 +545,7 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
       return NO_ERROR;
 
    } else {
-      printf(" Pkt size is invalid! (size=%d)\n", rxPktLength);
+      TRACE_INFO(" Pkt size is invalid! (size=%d)\n", rxPktLength);
       //Release the current error frame from RXQ
       ksz8851SetBit(interface, KSZ8851_REG_RXQCR, RXQCR_RRXEF);
 
@@ -614,8 +618,6 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
   */
  uint16_t ksz8851ReadReg(NetInterface *interface, uint8_t offset)
  {
-    assert((offset & 1) == 0);
-
     Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
 
     if (offset & 2) {
@@ -633,7 +635,6 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
   */
  void ksz8851WriteReg(NetInterface *interface, uint8_t offset, uint16_t value)
  {
-    assert((offset & 1) == 0);
     Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
 
     if (offset & 2) {
@@ -900,17 +901,28 @@ void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length) {
   */
  void ksz8851DumpReg(NetInterface *interface) {
     int i;
-    printf("\nRegister dump ( 128 x 16-bit ):\n");
+    TRACE_INFO("\nRegister dump ( 128 x 16-bit ):\n");
     for (i = 0; i < 256; i+=2) {
        if (((i % 16) == 0)) {
           if (i != 0) {
-             printf("\n");
+             TRACE_INFO("\n");
           }
-          printf("%02x: ", i);
+          TRACE_INFO("%02x: ", i);
        }
-       printf("%04x ", ksz8851ReadReg(interface, i));
+       TRACE_INFO("%04x ", ksz8851ReadReg(interface, i));
     }
-    printf("\n");
+    TRACE_INFO("\n");
+ }
+
+ /**
+  * Swaps a 16 bit value...0x1234 => 0x3412
+  * @param value
+  */
+ uint16_t swap(uint16_t value)
+ {
+    register uint16_t h = (value >> 8) & 0xff;
+    register uint16_t l = value & 0xff;
+    return (l << 8) | h;
  }
 
 
@@ -941,19 +953,42 @@ void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length) {
        .sigNumber = -1
  };
  static const NetInterface driverInterface = {
-       .init               = init,
-       .deinit             = deinit,
-       .online             = nullFunction,
-       .offline            = nullFunction,
-       .reset              = ksz8851SoftReset,
-       .processEvents      = ksz8851EventHandler,
-       .sendPacketPossible = ksz8851SendPacketPossible,
-       .sendPacket         = ksz8851SendPacket,
+       .init                     = init,
+       .deinit                   = deinit,
+       .online                   = nullFunction,
+       .offline                  = nullFunction,
+       .reset                    = ksz8851SoftReset,
+       .processEvents            = ksz8851EventHandler,
+       .sendPacketPossible       = ksz8851SendPacketPossible,
+       .sendPacket               = ksz8851SendPacket,
        .getDefaultNetworkAddress = getDefaultMacAddress,
        .nicContext = (Ksz8851Context*)&context,
  };
 
  extern const NetInterface * initModule() {
     return &driverInterface;
+ }
+
+
+
+ // ------------------ Entry points from old device --------------------------------------------------------
+
+ bool hal_probe(void) {
+    return TRUE;
+ }
+
+ void hal_initialization(void) {
+ }
+
+ void hal_deinitialization(void) {
+
+ }
+
+ bool hal_serviceReadPackets (APTR device,APTR a) {
+    return TRUE;
+ }
+
+ bool hal_serviceWritePackets(APTR a,APTR b) {
+    return TRUE;
  }
 
