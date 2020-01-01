@@ -430,6 +430,8 @@ error_t ksz8851Init(NetInterface *interface)
     Ksz8851TxHeader header;
     Ksz8851Context *context;
 
+    TRACE_DEBUG("ksz8851: Send packet (len=%ld)\n", length);
+
     //Point to the driver context
     context = (Ksz8851Context *) interface->nicContext;
 

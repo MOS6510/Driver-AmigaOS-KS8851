@@ -141,6 +141,9 @@ VOID DevCmdRemMulti(STDETHERARGS);
 VOID DevCmdGetSpecialStats(STDETHERARGS);
 VOID DevCmdNSDeviceQuery(STDETHERARGS);
 
+static void dumpMem(uint8_t * mem, int16_t len);
+static bool serviceWritePackets(struct DeviceDriverUnit *etherUnit, struct DeviceDriver *etherDevice);
+
 //############ Externe Variablen und Funktionen ################################
 
 SAVEDS
@@ -1001,7 +1004,7 @@ SAVEDS void DevProcEntry(void)
                };
             }
 
-            // Activity for iorequests?
+            // Activity of new IORequests? (mainly "writepacket")
             if ((receivedSignals & (1l << msgPortSignalBit)))
             {
                while ((ios2 = (void *) GetMsg((void *) etherUnit)) != NULL)
@@ -1015,6 +1018,9 @@ SAVEDS void DevProcEntry(void)
             {
                 ReadConfig(globEtherDevice);
             }
+
+            //Service send packets if needed...
+            serviceWritePackets(etherUnit,globEtherDevice);
          }
 
          DEBUGOUT((VERBOSE_DEVICE,"Unit Process: Leaving service loop...\n"));
@@ -1257,7 +1263,7 @@ VOID DevCmdWritePacket(STDETHERARGS)
         /* Make sure it's a legal length. */
         if(ios2->ios2_DataLength <= etherUnit->eu_MTU)
         {
-            /* Queue the Write Request for the etherbridge.device process. */
+            /* Queue the Write Request for the unit process. */
             ios2->ios2_Req.io_Flags &= ~IOF_QUICK;
             Forbid();
             ios2->ios2_Req.io_Message.mn_Node.ln_Type = NT_MESSAGE;
@@ -2068,6 +2074,101 @@ VOID DevCmdNSDeviceQuery(STDETHERARGS)
     TermIO(ios2,globEtherDevice);
 }
 
+static uint8_t sendBuffer[2000];
+
+/**
+ * Writing Packets. Check if packets should be send out.
+ * Returns TRUE if something was send. False if not...
+ *
+ * @param etherUnit
+ * @param etherDevice
+ * @return ...
+ */
+static bool serviceWritePackets(struct DeviceDriverUnit *etherUnit, struct DeviceDriver *etherDevice) {
+
+   struct IOSana2Req *ios2;
+   struct BufferManagement *bm;
+   short pad;
+
+   DEBUGOUT((VERBOSE_HW, "serviceWritePackets():\n"));
+
+   /* Packets for sending available? */
+   while ((ios2 = safeGetNextWriteRequest(etherUnit)) != NULL) {
+
+      bm = (struct BufferManagement *) ios2->ios2_BufferManagement;
+      if (!bm || !bm->bm_CopyFromBuffer) {
+         setErrorOnRequest(ios2, S2ERR_NO_RESOURCES, S2WERR_BUFF_ERROR);
+         goto end;
+      }
+
+      if (ios2->ios2_Req.io_Flags & SANA2IOF_RAW) {
+         //
+         // RAW:
+         //
+         TRACE_INFO("  Send raw packet...\n");
+
+         if (ios2->ios2_DataLength > 14) {
+            if (CopyFromBuffer((ULONG)sendBuffer, (ULONG)(ios2->ios2_Data), ios2->ios2_DataLength)) {
+               dumpMem(sendBuffer, ios2->ios2_DataLength);
+               etherUnit->eu_lowLevelDriver->sendPacket(etherUnit->eu_lowLevelDriver, sendBuffer, ios2->ios2_DataLength);
+            } else {
+               setErrorOnRequest(ios2, S2ERR_NO_RESOURCES, S2WERR_BUFF_ERROR);
+            }
+         } else {
+            setErrorOnRequest(ios2, S2ERR_MTU_EXCEEDED, S2WERR_BUFF_ERROR);
+         }
+
+      } else {
+         //
+         // COOKED:
+         //
+         if (ios2->ios2_DataLength <= ETHERNET_MTU) {
+
+            pad = 0;
+            if (ios2->ios2_DataLength < 46) {
+               pad = 46 - ios2->ios2_DataLength;
+            }
+
+            //Build Ethernet packet SRC + DST + Type:
+            copyEthernetAddress(ios2->ios2_DstAddr, sendBuffer+0);
+            copyEthernetAddress(etherUnit->eu_StAddr, sendBuffer+6);
+            *(uint16_t*)(sendBuffer+12) = ios2->ios2_PacketType;
+
+            DEBUGOUT((VERBOSE_HW, "  Send cooked packet:\n"));
+            DEBUGOUT((VERBOSE_HW, "    from (ios2_Data): 0x%lx\n", ios2->ios2_Data));
+            DEBUGOUT((VERBOSE_HW, "    len             : %ld\n", (ULONG) ios2->ios2_DataLength));
+            DEBUGOUT((VERBOSE_HW, "    + padding       : %ld\n", (ULONG)pad));
+            DEBUGOUT((VERBOSE_HW, "    type            : 0x%lx\n", (ULONG)ios2->ios2_PacketType));
+            DEBUGOUT((VERBOSE_HW, "    Dst MAC         : ")); printEthernetAddress(sendBuffer+0); DEBUGOUT((VERBOSE_HW,"\n"));
+            DEBUGOUT((VERBOSE_HW, "    Src MAC         : ")); printEthernetAddress(sendBuffer+6); DEBUGOUT((VERBOSE_HW,"\n"));
+
+            //Copy packet content and send....
+            if (CopyFromBuffer((ULONG )(sendBuffer + ETHER_PACKET_HEAD_SIZE), (ULONG )ios2->ios2_Data, ios2->ios2_DataLength)) {
+               int len = ios2->ios2_DataLength + ETHER_PACKET_HEAD_SIZE + pad;
+               dumpMem(sendBuffer, len);
+               etherUnit->eu_lowLevelDriver->sendPacket(etherUnit->eu_lowLevelDriver, sendBuffer, len);
+
+            } else {
+               setErrorOnRequest(ios2, S2ERR_NO_RESOURCES, S2WERR_BUFF_ERROR);
+               DEBUGOUT((VERBOSE_HW, "   CopyFromBuffer error\n"));
+            }
+         } else {
+            setErrorOnRequest(ios2, S2ERR_MTU_EXCEEDED, S2WERR_BUFF_ERROR);
+            DEBUGOUT((VERBOSE_HW, "   Pkt exceeds the MTU!\n"));
+         }
+      }
+      end:
+      if (ios2->ios2_WireError != 0) {
+         DoEvent(S2EVENT_BUFF, etherUnit, etherDevice);
+      }
+      TermIO(ios2, etherDevice);
+      return TRUE;
+   }
+
+   //Nothing to be done...
+   return FALSE;
+}
+
 /**
  * To calculate the remaining stacksize is not as easy as it seems. See Amiga Guru Book.
  * So we check the total stack only, not the real used stack space...
@@ -2084,6 +2185,21 @@ BOOL checkStackSpace(int minStackSize)
    }
    return TRUE;
 }
+
+static void dumpMem(uint8_t * mem, int16_t len) {
+    int i;
+    for (i = 0; i < len; i++) {
+       if (((i % 16) == 0)) {
+          if (i != 0) {
+             TRACE_INFO("\n");
+          }
+          TRACE_INFO("%03lx: ", (ULONG)i);
+       }
+       TRACE_INFO("%02lx ", *mem);
+       mem++;
+    }
+    TRACE_INFO("\n");
+ }
 
 
 #if DEBUG > 0
