@@ -42,9 +42,17 @@ CFLAGS += -DDEVICE_NAME=\"$(DEVICE_NAME)\"
 all: builddir $(BUILDDIR)/$(DEVICE_NAME).$(ARCH)
 
 addToAdf:
-	@echo "Add to ADF file:" $(ARCH)
+	@echo "Add to ADF file:"
 	@$(XDFTOOL) $(ADFIMAGE) delete "network/"$(DEVICE_NAME).$(ARCH) || true
 	@$(XDFTOOL) $(ADFIMAGE) write  $(BUILDDIR)/$(DEVICE_NAME).$(ARCH) "network"
+	
+# Installs device on real Amiga via "Amiga Explorer"
+install:
+		$(AMIGA_EXPLORER) -l || true
+		@sleep 1
+		$(AMIGA_EXPLORER) -u DEVS:/networks/ksz8851.device || true
+		@sleep 1
+		$(AMIGA_EXPLORER) -s $(BUILDDIR)/$(DEVICE_NAME).$(ARCH) DEVS:/networks/ksz8851.device	
      
 builddir:
 	@echo "Create build dir..." 

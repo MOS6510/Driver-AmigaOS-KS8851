@@ -22,12 +22,12 @@
 
 #include <netinet/in.h>
 
-#include "ksz8851-public.h"
+#include "../include/hardware-interface.h"
 
 //get the highest byte of 16 bit value only (BE??)
 #define MSB(x) (((x) >> 8) & 0xff)
 
-#define PRIX16 "x"
+#define PRIX16 "lx"
 #define PRIu8 "d"
 
 /**
@@ -44,23 +44,8 @@ uint16_t swap(uint16_t);
 #define bool_t bool
 
 
-#ifdef DEBUG
-extern void traceout(char * format, ...);
-#define TRACE_INFO traceout
-#define TRACE_DEBUG traceout
-#else
-#define TRACE_INFO(...)
-#define TRACE_DEBUG(...)
-#endif
 
 
-#define ERROR_WRONG_IDENTIFIER -1
-#define ERROR_OUT_OF_MEMORY -2
-#define NO_ERROR 0
-#define ERROR_INVALID_LENGTH -3
-#define ERROR_FAILURE -4
-#define ERROR_INVALID_PACKET -5
-#define NO_CHIP_FOUND -6
 
 #define memPoolAlloc(a) AllocVec(a, MEMF_ANY)
 #define memPoolFree(a) FreeVec(a)
@@ -486,7 +471,7 @@ extern void traceout(char * format, ...);
  void ksz8851EnableIrq(NetInterface *interface);
  void ksz8851DisableIrq(NetInterface *interface);
  bool_t ksz8851IrqHandler(register NetInterface *interface);
- void ksz8851EventHandler(NetInterface *interface);
+ bool ksz8851EventHandler(NetInterface *interface);
  error_t ksz8851SendPacket(NetInterface *interface, uint8_t * buffer, size_t length);
  error_t ksz8851ReceivePacket(NetInterface *interface);
  error_t ksz8851UpdateMacAddrFilter(NetInterface *interface);

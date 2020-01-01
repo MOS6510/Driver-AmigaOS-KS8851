@@ -35,6 +35,7 @@
 #include <stdbool.h>
 
 #include "copybuffs.h"
+#include "hardware-interface.h"
 
 
 //Number of device units supported
@@ -100,7 +101,9 @@ struct DeviceDriverUnit
 
     struct Sana2DeviceStats eu_Stats;        /* Global device statistics */
     struct SuperS2PTStats* eu_IPTrack;       /* For tracking IP packets */
-    ULONG                  eu_Sigbit;        /* Signalbit for interrupt handler */
+
+    NetInterface *         eu_lowLevelDriver; //Access to the low level hardware driver...
+    ULONG                  eu_lowLevelDriverSignalNumber; //The signal number used for low level signals...
 };
 
 

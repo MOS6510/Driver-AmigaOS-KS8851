@@ -80,7 +80,12 @@ void printCCR(NetInterface* ks) {
  * @param buffer
  * @param size
  */
-void processPacket(MacAddr * src, MacAddr * dst, uint16_t packetType, uint8_t * buffer, uint16_t size ) {
+void processPacket(uint8_t * buffer, uint16_t size ) {
+
+   MacAddr * dst = (MacAddr*)(buffer+0);
+   MacAddr * src = (MacAddr*)(buffer+6);
+   uint16_t packetType = *(uint16_t*)(buffer+12);
+
    printf(" Packet src=%02x:%02x:%02x:%02x:%02x:%02x dst=%02x:%02x:%02x:%02x:%02x:%02x\n type=0x%04x\n",
 
          src->b[0],
@@ -276,7 +281,7 @@ int main(int argc, char * argv[])
    Ksz8851Context * context = (Ksz8851Context*)interface->nicContext;
 
    //Add Stack methods (callbacks) to the driver...
-   interface->rxPacketFunction   = processPacket;
+   interface->onPacketReceived   = processPacket;
    interface->linkChangeFunction = nicNotifyLinkChange;
 
    //First setup: Set a valid Ethernet mac address (not in EEPROM???)

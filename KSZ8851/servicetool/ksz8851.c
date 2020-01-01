@@ -14,9 +14,23 @@
  * @brief Enable interrupts (must be called from right Amiga Task!)
  * @param[in] interface Underlying network interface
  **/
-void ksz8851EnableIrq(NetInterface *interface)
+void ksz8851Online(NetInterface *interface)
 {
    installInterruptHandler(interface);
+
+   //Clear interrupt flags
+   ksz8851SetBit(interface, KSZ8851_REG_ISR, ISR_LCIS | ISR_TXIS |
+         ISR_RXIS | ISR_RXOIS | ISR_TXPSIS | ISR_RXPSIS | ISR_TXSAIS |
+         ISR_RXWFDIS | ISR_RXMPDIS | ISR_LDIS | ISR_EDIS | ISR_SPIBEIS);
+
+   //Configure interrupts as desired (this enables interrupts. Be sure that the ISR is installed!)
+   ksz8851SetBit(interface, KSZ8851_REG_IER, IER_LCIE | IER_TXIE | IER_RXIE | IER_RXOIE);
+
+   //Enable TX operation
+   ksz8851SetBit(interface, KSZ8851_REG_TXCR, TXCR_TXE);
+
+   //Enable RX operation
+   ksz8851SetBit(interface, KSZ8851_REG_RXCR1, RXCR1_RXE);
 }
 
 
@@ -24,29 +38,42 @@ void ksz8851EnableIrq(NetInterface *interface)
  * @brief Disable interrupts
  * @param[in] interface Underlying network interface
  **/
-void ksz8851DisableIrq(NetInterface *interface)
+void ksz8851Offline(NetInterface *interface)
 {
    //Disable all NIC interrupts to release the interrupt line
    Disable();
    ksz8851WriteReg(interface, KSZ8851_REG_IER, 0);
+   //Disable TX operation
+   ksz8851ClearBit(interface, KSZ8851_REG_TXCR, TXCR_TXE);
+   //Enable RX operation
+   ksz8851ClearBit(interface, KSZ8851_REG_RXCR1, RXCR1_RXE);
    Enable();
+
    uninstallInterruptHandler(interface);
 }
 
-void ksz8851PrintNICEndiness(Ksz8851Context * context) {
+static void ksz8851PrintNICEndiness(Ksz8851Context * context) {
     TRACE_INFO("Current Endian Mode: %s\n", context->isInBigEndianMode ? "BE" : "LE");
  }
 
- bool ksz8851DetectNICEndiness(NetInterface *interface, Ksz8851Context * context) {
-    //Check in which mode the NIC is now
-    if (ksz8851ReadReg(interface, KSZ8851_REG_CIDER) != KSZ8851_REV_A3_ID) {
-       context->isInBigEndianMode = !context->isInBigEndianMode;
-       if (ksz8851ReadReg(interface, KSZ8851_REG_CIDER) != KSZ8851_REV_A3_ID) {
-          return false;
-       }
-    }
-    return true;
- }
+/**
+ * Probes for the NIC, detect which mode is used (big endian oder little endian)
+ * @param interface
+ * @return
+ */
+static error_t ksz8851DetectNICEndiness(NetInterface *interface) {
+
+   Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
+
+   //Check in which mode the NIC is now
+   if (ksz8851ReadReg(interface, KSZ8851_REG_CIDER) != KSZ8851_REV_A3_ID) {
+      context->isInBigEndianMode = !context->isInBigEndianMode;
+      if (ksz8851ReadReg(interface, KSZ8851_REG_CIDER) != KSZ8851_REV_A3_ID) {
+         return NO_CHIP_FOUND;
+      }
+   }
+   return NO_ERROR;
+}
 
 
  /**
@@ -54,7 +81,7 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
   * @param[in] interface Underlying network interface
   * @return Error code
   **/
- error_t ksz8851Init(NetInterface *interface)
+error_t ksz8851Init(NetInterface *interface)
  {
     //Point to the driver context
     Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
@@ -65,7 +92,7 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
     //Try to detect NIC and the current endian mode...
     uint8_t tries = 2;
     do {
-       if (ksz8851DetectNICEndiness(interface, context)) {
+       if (ksz8851DetectNICEndiness(interface)) {
           break;
        }
        TRACE_INFO("Problem to detect NIC and his endian mode. Hopefully leaving reset state...\n");
@@ -81,15 +108,16 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
 
     //Re-detect NIC after reset...
     if (ksz8851ReadReg(interface, KSZ8851_REG_CIDER) != KSZ8851_REV_A3_ID) {
-       TRACE_INFO("Unable to detect NIC!");
+       TRACE_INFO("Unable to detect NIC!\n");
+       ksz8851DumpReg(interface);
        return ERROR_WRONG_IDENTIFIER;
     }
 
     ksz8851PrintNICEndiness(context);
 
-    //TRACE_DEBUG("CIDER=0x%04"   PRIX16 "\r\n", ksz8851ReadReg(interface, KSZ8851_REG_CIDER));
-    TRACE_DEBUG("PHY1ILR=0x%04" PRIX16 "\r\n", ksz8851ReadReg(interface, KSZ8851_REG_PHY1ILR));
-    TRACE_DEBUG("PHY1IHR=0x%04" PRIX16 "\r\n", ksz8851ReadReg(interface, KSZ8851_REG_PHY1IHR));
+    TRACE_DEBUG("CIDER=0x%04"   PRIX16 "\r\n", (ULONG)ksz8851ReadReg(interface, KSZ8851_REG_CIDER));
+    TRACE_DEBUG("PHY1ILR=0x%04" PRIX16 "\r\n", (ULONG)ksz8851ReadReg(interface, KSZ8851_REG_PHY1ILR));
+    TRACE_DEBUG("PHY1IHR=0x%04" PRIX16 "\r\n", (ULONG)ksz8851ReadReg(interface, KSZ8851_REG_PHY1IHR));
 
     //Initialize driver specific variables
     context->frameId = 0;
@@ -138,18 +166,7 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
     //Restart auto-negotiation
     ksz8851SetBit(interface, KSZ8851_REG_P1CR, P1CR_RESTART_AN);
 
-    //Clear interrupt flags
-    ksz8851SetBit(interface, KSZ8851_REG_ISR, ISR_LCIS | ISR_TXIS |
-       ISR_RXIS | ISR_RXOIS | ISR_TXPSIS | ISR_RXPSIS | ISR_TXSAIS |
-       ISR_RXWFDIS | ISR_RXMPDIS | ISR_LDIS | ISR_EDIS | ISR_SPIBEIS);
-
-    //Configure interrupts as desired (this enables interrupts. Be sure that the ISR is installed)
-    ksz8851SetBit(interface, KSZ8851_REG_IER, IER_LCIE | IER_TXIE | IER_RXIE | IER_RXOIE);
-
-    //Enable TX operation
-    ksz8851SetBit(interface, KSZ8851_REG_TXCR, TXCR_TXE);
-    //Enable RX operation
-    ksz8851SetBit(interface, KSZ8851_REG_RXCR1, RXCR1_RXE);
+    // at this point the its are not activated. Do this only when the interrupt handler is istnalled.
 
     //Successful initialization
     return NO_ERROR;
@@ -164,9 +181,7 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
   */
  void ksz8851SoftReset(NetInterface *interface, uint8_t resetOperation)
  {
-    Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
-
-    if (!ksz8851DetectNICEndiness(interface, context)) {
+    if (!ksz8851DetectNICEndiness(interface)) {
        return;
     }
 
@@ -177,14 +192,14 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
     //Perform reset command
     ksz8851WriteReg(interface, KSZ8851_REG_GRR, resetOperation);
     /* wait a short time to effect reset */
-    Delay(50);
+    Delay(25);
     //release soft reset again
     ksz8851WriteReg(interface, KSZ8851_REG_GRR, 0);
     /* wait for condition to clear */
-    Delay(50);
+    Delay(10);
 
     //Detect endiness after reset again...
-    if (!ksz8851DetectNICEndiness(interface, context)) {
+    if (!ksz8851DetectNICEndiness(interface)) {
        return;
     }
 
@@ -294,7 +309,7 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
   * @brief KSZ8851 event handler (called from non-isr)
   * @param[in] interface Underlying network interface
   **/
- void ksz8851EventHandler(NetInterface *interface)
+ bool ksz8851EventHandler(NetInterface *interface)
  {
     uint16_t status;
     uint8_t  frameCount;
@@ -337,7 +352,10 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
        }
 
        enableMask |= IER_LCIE;
-       interface->linkChangeFunction(interface);
+
+       if (interface->linkChangeFunction) {
+          interface->linkChangeFunction(interface);
+       }
     }
 
     //Check whether a packet has been received?
@@ -353,7 +371,7 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
        //Get the total number of frames that are pending in the buffer (bits 15-8)
        uint16_t rxfctr = ksz8851ReadReg(interface, KSZ8851_REG_RXFCTR);
        frameCount = MSB(rxfctr);
-       TRACE_INFO(" FrameCount: %d\n", frameCount);
+       TRACE_INFO(" FrameCount: %ld\n", (ULONG)frameCount);
 
        //Process all pending packets (0-255)
        while(frameCount > 0)
@@ -377,17 +395,26 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
        ksz8851SetBit(interface, KSZ8851_REG_ISR, ISR_RXOIS);
        TRACE_INFO(" =>>>> ACK Receiver Overrun\n");
 
+       //Reset NIC! (scheint so nichts zu nutzen! NIC bleibt im Overrun)
+       //TODO: Check how to reset overruns...
+       //ksz8851SoftReset(interface, 2);
+
        enableMask |= IER_RXOIE;
     }
 
     //Wakeup from something?
     if (status & IER_LDIE) {
-       interface->linkChangeFunction(interface);
+       if (interface->linkChangeFunction) {
+          interface->linkChangeFunction(interface);
+       }
        enableMask |= IER_LDIE;
     }
 
     //Re-enable handled interrupts again...
     ksz8851SetBit(interface, KSZ8851_REG_IER, enableMask);
+
+    //Every thing should be done. No need to call again...
+    return false;
  }
 
  /**
@@ -460,12 +487,13 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
     //WARNING! VOLATILE! If not compiler would remove read from register! Also assign the reading from register!
     volatile uint16_t dummy UNUSED; //VOLATILE!
 
+    /*
     struct EthernetRxPacketHead {
        uint16_t alignmentDummyBytes; //only when "RXIPHTOE" is set in "RXQCR"
        MacAddr destAddress;
        MacAddr sourceAddress;
        uint16_t packetType;
-    } __end_packed packetHeader;
+    } __end_packed packetHeader;*/
 
     //Point to the driver context
     context = (Ksz8851Context *)interface->nicContext;
@@ -473,7 +501,7 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
     //Read received frame status from RXFHSR
     frameStatus = ksz8851ReadReg(interface, KSZ8851_REG_RXFHSR);
 
-    TRACE_INFO(" Receiving frame (status=0x%04x):\n", frameStatus);
+    TRACE_INFO(" Receiving frame (status=0x%04lx):\n", (ULONG)frameStatus);
 
    //Make sure the frame is valid (bit 15 must be 1)
    if (0 == (frameStatus & RXFHSR_RXFV)) {
@@ -490,7 +518,7 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
             | RXFHSR_RXIPFCS      //IP crc error
             | RXFHSR_RXICMPFCS    //ICMP crc error
       )) {
-         TRACE_INFO(" Pkt is error packet!");
+         TRACE_INFO(" Pkt is error packet!\n");
 
          //Release the current error frame from RXQ
          ksz8851SetBit(interface, KSZ8851_REG_RXQCR, RXQCR_RRXEF);
@@ -522,30 +550,31 @@ void ksz8851PrintNICEndiness(Ksz8851Context * context) {
       dummy = KSZ8851_DATA_REG; //Status Word
       dummy = KSZ8851_DATA_REG; //byte count
 
-      //Read 16 frame header first...
-      ksz8851ReadFifo(interface, (uint8_t*)&packetHeader, sizeof(packetHeader));
+      //TODO: There is a problem: To fulfill Amiga Sana2 device standard I need "raw packets" too which includes all infos about the packet.
+      //But before I can read the whole packet, I have no clue that type it is. I can't discard the packet.
+      //I have to copy twice the packet.
+
+      //Read 16 frame header first (2 byte align, destination, source, type, payload)...
+      //ksz8851ReadFifo(interface, (uint8_t*)&packetHeader, sizeof(packetHeader));
       //TODO:  Ask the receive if he really wants the packet!
       //Read rest of the frame...
-      rxPktLength -= sizeof(packetHeader);
+      //rxPktLength -= sizeof(packetHeader);
       ksz8851ReadFifo(interface, context->rxBuffer, rxPktLength );
 
       //End RXQ read access (clear the bit!)
       ksz8851ClearBit(interface, KSZ8851_REG_RXQCR, RXQCR_SDA);
 
       //Pass the packet to the upper layer
-      if (interface->rxPacketFunction) {
-         interface->rxPacketFunction(
-               &packetHeader.destAddress,
-               &packetHeader.sourceAddress,
-               (uint16_t)ntohs(packetHeader.packetType),
-               context->rxBuffer, rxPktLength);
+      if (interface->onPacketReceived) {
+         //jump oder the 2 dummy bytes of the packet //TODO:
+         interface->onPacketReceived(context->rxBuffer+2, rxPktLength-2);
       }
 
       //Valid packet received
       return NO_ERROR;
 
    } else {
-      TRACE_INFO(" Pkt size is invalid! (size=%d)\n", rxPktLength);
+      TRACE_INFO(" Pkt size is invalid! (size=%ld)\n", (ULONG)rxPktLength);
       //Release the current error frame from RXQ
       ksz8851SetBit(interface, KSZ8851_REG_RXQCR, RXQCR_RRXEF);
 
@@ -907,9 +936,9 @@ void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length) {
           if (i != 0) {
              TRACE_INFO("\n");
           }
-          TRACE_INFO("%02x: ", i);
+          TRACE_INFO("%02lx: ", (ULONG)i);
        }
-       TRACE_INFO("%04x ", ksz8851ReadReg(interface, i));
+       TRACE_INFO("%04lx ", (ULONG)ksz8851ReadReg(interface, i));
     }
     TRACE_INFO("\n");
  }
@@ -928,61 +957,68 @@ void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length) {
 
  // -------------------------------- Driver Interface Level -------------------------------------------------
 
- static void getDefaultMacAddress(NetInterface * interface, MacAddr * addr) {
+ static ULONG ksz8851GetUsedSignalNumber(NetInterface * interface) {
+    Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
+    return context->sigNumber;
+ }
+
+
+ static void ksz8851GetStationAddress(NetInterface * interface, MacAddr * addr) {
      addr->w[0] = ntohs( ksz8851ReadReg(interface, KSZ8851_REG_MARH) );
      addr->w[1] = ntohs( ksz8851ReadReg(interface, KSZ8851_REG_MARM) );
      addr->w[2] = ntohs( ksz8851ReadReg(interface, KSZ8851_REG_MARL) );
   }
 
+ static bool macInit = false;
  static error_t init(NetInterface * interface) {
-    ksz8851EnableIrq(interface);
+
+    if (!macInit) {
+
+       //Set a default MAC address:
+       interface->macAddr.b[0] = 0x02;
+       interface->macAddr.b[1] = 0x34;
+       interface->macAddr.b[2] = 0x56;
+       interface->macAddr.b[3] = 0x78;
+       interface->macAddr.b[4] = 0x9a;
+       interface->macAddr.b[5] = 0xbc;
+
+       macInit = true;
+    }
+
     return ksz8851Init(interface);
  }
 
  static void deinit(NetInterface * interface) {
-    ksz8851DisableIrq(interface);
+    ksz8851Offline(interface);
     ksz8851DumpReg(interface);
- }
-
- static void nullFunction(NetInterface * interface) {
-    //Nothing
  }
 
  static Ksz8851Context context = {
        .signalTask = NULL,
        .sigNumber = -1
  };
- static const NetInterface driverInterface = {
+ static NetInterface driverInterface = {
        .init                     = init,
        .deinit                   = deinit,
-       .online                   = nullFunction,
-       .offline                  = nullFunction,
+       .probe                    = ksz8851DetectNICEndiness,
+       .online                   = ksz8851Online,
+       .offline                  = ksz8851Offline,
+       .getUsedSignalNumber      = ksz8851GetUsedSignalNumber,
        .reset                    = ksz8851SoftReset,
        .processEvents            = ksz8851EventHandler,
        .sendPacketPossible       = ksz8851SendPacketPossible,
        .sendPacket               = ksz8851SendPacket,
-       .getDefaultNetworkAddress = getDefaultMacAddress,
+       .getDefaultNetworkAddress = ksz8851GetStationAddress,
        .nicContext = (Ksz8851Context*)&context,
  };
 
- extern const NetInterface * initModule() {
+ extern NetInterface * initModule() {
     return &driverInterface;
  }
 
 
 
  // ------------------ Entry points from old device --------------------------------------------------------
-
- bool hal_probe(void) {
-    return TRUE;
- }
-
- void hal_initialization(void) {
- }
-
- void hal_deinitialization(void) {
-
- }
 
  bool hal_serviceReadPackets (APTR device,APTR a) {
     return TRUE;

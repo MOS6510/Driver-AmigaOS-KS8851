@@ -22,7 +22,7 @@ VOID vkprintf( CONST_STRPTR formatString, CONST APTR values );
 
 void printdebug(short dbLevel, char * format, ...)
 {
-   if (debugLevel >= dbLevel)
+   //if (debugLevel >= dbLevel)
    {
       Disable();
       va_list args;
@@ -45,7 +45,7 @@ void traceout(char * format, ...) {
 void print(short dbLevel, char * text)
 {
    Disable();
-   if (debugLevel >= dbLevel)
+   //if (debugLevel >= dbLevel)
    {
       while(*text) {
          KPutChar(*(text++));
@@ -59,7 +59,7 @@ static const char confstr[]="0123456789abcdef";
 
 void printi(short dbLevel,unsigned long wert1)
 {
-   if (debugLevel >= dbLevel)
+   //if (debugLevel >= dbLevel)
    {
       int i;
       ULONG wert2=wert1;

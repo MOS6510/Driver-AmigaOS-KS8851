@@ -19,6 +19,7 @@ INC_SRCH_PATH						:= -I$(PROJ_ROOT)/os_includes/sana
 ADFIMAGE								:= $(PROJ_ROOT)/build/Amiga1200+Tools.adf
 
 CFLAGS								+= -Os \
+										-I../include \
 										-fstrength-reduce \
 									 	$(INC_SRCH_PATH) \
 										-Wstrict-prototypes \
@@ -59,8 +60,8 @@ debug:
 	@$(MAKE) -C KSZ8851/devicedriver  
 	
 install:
-	@$(MAKE) -C KSZ8851/servicetool   install
-	@$(MAKE) -C KSZ8851/devicedriver
+	#@$(MAKE) -C KSZ8851/servicetool   install
+	@$(MAKE) -C KSZ8851/devicedriver  install
 
 clean:
 	@$(MAKE) -C KSZ8851/servicetool  clean

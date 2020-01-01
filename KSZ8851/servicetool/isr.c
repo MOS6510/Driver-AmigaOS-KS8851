@@ -51,6 +51,8 @@
     context->signalTask = FindTask(0l);
     context->sigNumber  = AllocSignal(-1);
 
+    TRACE_INFO("ISR: Task = '%s', signal=0x%lx (mask=0x%lx)\n", context->signalTask->tc_Node.ln_Name, context->sigNumber, (1 << context->sigNumber));
+
     if (context->sigNumber == -1) {
        TRACE_DEBUG("No free signal!\n");
        context->signalTask = NULL;
@@ -80,7 +82,7 @@
        FreeSignal(context->sigNumber);
        context->sigNumber= -1;
     } else {
-       TRACE_DEBUG("Interrupt handler not installed.\n");
+       TRACE_DEBUG("Trying to uninstall ISR but it was not installed. Ignored.\n");
     }
  }
 

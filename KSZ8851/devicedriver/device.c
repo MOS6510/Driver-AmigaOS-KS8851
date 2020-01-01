@@ -61,13 +61,15 @@
 #include "tools.h"
 #include "version.h"
 
+#include "hardware-interface.h"
+
 // ############################## GLOBALS #####################################
 
 const UBYTE BROADCAST_ADDRESS[6] = {0xff,0xff,0xff,0xff,0xff,0xff};
 
 // ############################## LOCALS  #####################################
 
-static const char * DEVICE_TASK_NAME = DEVICE_NAME " Unit Task";
+static const char * DEVICE_TASK_NAME = DEVICE_NAME " unit task";
 
 // ############################## Prototypes ##################################
 
@@ -92,6 +94,9 @@ static BOOL checkStackSpace(int minStackSize);
 #define ETHERUF_LOOPBACK      (1<<ETHERUB_LOOPBACK)
 #define ETHERUF_PROMISC       (1<<ETHERUB_PROMISC)
 
+
+#define ETHERNET_MTU 1500
+#define ETHER_PACKET_HEAD_SIZE 14
 
 //This is for defining the API version to the PC side.
 const UWORD DevVersion  = (UWORD)DEVICE_VERSION;
@@ -205,9 +210,9 @@ struct Library * DeviceInit(BPTR DeviceSegList, struct Library * DevBasePointer,
  * @param devPointer
  */
 void DeviceOpen(struct IOSana2Req *ios2,
-              ULONG s2unit, 
-              ULONG s2flags,
-              struct Library * devPointer)
+      ULONG s2unit,
+      ULONG s2flags,
+      struct Library * devPointer)
 {  
    struct DeviceDriverUnit *etherUnit;
    struct BufferManagement *bm;
@@ -216,7 +221,8 @@ void DeviceOpen(struct IOSana2Req *ios2,
    /*
    DEBUGOUT((VERBOSE_DEVICE, "Parameter Test: '1' == %ld (16 bit)\n", (uint16_t) 1));
    DEBUGOUT((VERBOSE_DEVICE, "Parameter Test: '2' == %ld (32 bit)\n", (uint32_t) 2));
-   DEBUGOUT((VERBOSE_DEVICE, "Parameter Test: '0x5678'     == 0x%lx (16 bit)\n", (uint32_t) 0x5678));
+   TRACE_DEBUG("Parameter Test: '0x5678'     == 0x%04lx (32 bit)\n", (uint32_t)0x5678);
+   TRACE_DEBUG("Parameter Test: '0x02'       == 0x%02lx (8 bit)\n",  (uint32_t)0x02);
    DEBUGOUT((VERBOSE_DEVICE, "Parameter Test: '0x12345678' == 0x%lx (32 bit)\n", (uint32_t) 0x12345678));*/
 
    DEBUGOUT((VERBOSE_DEVICE, "DevOpen(ioreq=0x%lx, unit=%ld, flags=0x%lx, devPointer=0x%lx)...\n", ios2, s2unit, s2flags, devPointer));
@@ -239,32 +245,37 @@ void DeviceOpen(struct IOSana2Req *ios2,
    //At this time unit "0" is only supported.
    if(s2unit < ED_MAXUNITS)
    {
-      //Test and check hardware
-      if (hal_probe())
+      //jetzt exklusiven Zugriff ?
+      if (s2flags & SANA2OPF_MINE)
       {
-         //jetzt exklusiven Zugriff ?
+         //schon von jemanden anderen geoeffnet ?
+         if (!(globEtherDevice->ed_Device.lib_OpenCnt > 1))
+            globEtherDevice->ed_Device.lib_Flags |= ETHERUF_EXCLUSIVE;
+         else
+            goto end;
+      }
+
+      //open in promisc mode ? (only in conjunction with flag MINE!!!)
+      if (s2flags & SANA2OPF_PROM)
+      {
          if (s2flags & SANA2OPF_MINE)
-         {
-            //schon von jemanden anderen geoeffnet ?
-            if (!(globEtherDevice->ed_Device.lib_OpenCnt > 1))
-               globEtherDevice->ed_Device.lib_Flags |= ETHERUF_EXCLUSIVE;
-            else
-               goto end;
-         }
+            globEtherDevice->ed_Device.lib_Flags |= ETHERUF_PROMISC;
+         else
+            goto end;
+      }
 
-         //open in promisc mode ? (only in conjunction with flag MINE!!!)
-         if (s2flags & SANA2OPF_PROM)
-         {
-            if (s2flags & SANA2OPF_MINE)
-               globEtherDevice->ed_Device.lib_Flags |= ETHERUF_PROMISC;
-            else
-               goto end;
-         }
+      //get access to the low level driver
+      NetInterface * lowLevelDriver = initModule();
 
+      //Test and check hardware
+      if (NO_ERROR == lowLevelDriver->probe(lowLevelDriver))
+      {
          //Bring up unit device process...
          etherUnit = InitUnitProcess(s2unit,globEtherDevice);
          if( etherUnit )
          {
+            etherUnit->eu_lowLevelDriver = lowLevelDriver;
+
             //PromMode setzen/löschen wenn Device schon online
             if (etherUnit->eu_State & ETHERUF_ONLINE)
             {
@@ -850,7 +861,7 @@ static BOOL ReadConfig( struct DeviceDriver *etherDevice )
 
     RegistryInit( sConfigFile );
     {
-       debugLevel =                       ReadKeyInt("DEBUGLEV"       , false);
+       debugLevel =                       1000; //ReadKeyInt("DEBUGLEV"       , false);
        etherDevice->ed_showMessages   =   ReadKeyInt("SHOWMESSAGES"   , true);
     }
     RegistryDestroy();
@@ -900,9 +911,6 @@ VOID ExpungeUnit(UBYTE unitNumber, struct DeviceDriver *etherDevice)
       etherUnit = NULL;
    }
 
-   hal_deinitialization();
-
-
    DEBUGOUT((VERBOSE_DEVICE,"ExpungeUnit():3\n"));
 
    DEBUGOUT((VERBOSE_DEVICE,"ExpungeUnit()...end.\n"));
@@ -917,11 +925,10 @@ SAVEDS void DevProcEntry(void)
     struct DeviceDriverUnit *etherUnit;
     struct StartupMessage *startupMessage;
     struct IOSana2Req *ios2;
-    ULONG waitmask,signals;
+    ULONG receivedSignals;
     BYTE msgPortSignalBit;
     BYTE configFileNotifySigBit;
     struct NotifyRequest configNotify = {0};
-
 
     /* Find our Process pointer and wait for our startup
        message to arrive. */      
@@ -960,8 +967,7 @@ SAVEDS void DevProcEntry(void)
        above. */
     if(etherUnit->eu_Proc)    
     {    
-        // Signal for Janus Service Funktion beschaffen
-        etherUnit->eu_Sigbit = AllocSignal(-1);
+        int servLoopCounter;
     
         // Init DOS Notify for etherbridge.config file
         configFileNotifySigBit = AllocSignal(-1);
@@ -970,67 +976,60 @@ SAVEDS void DevProcEntry(void)
         configNotify.nr_stuff.nr_Signal.nr_Task      = &etherUnit->eu_Proc->pr_Task;
         configNotify.nr_stuff.nr_Signal.nr_SignalNum = configFileNotifySigBit;
         StartNotify(&configNotify);
-        
-        ULONG transportMask = (1L << etherUnit->eu_Tx->mp_SigBit) //<= Signal Message Port (TX packet)
-                            | (1L << etherUnit->eu_Sigbit);       //<= JanusIntHandler or PollHandler (RX Packet)
 
-        waitmask = (1L<<msgPortSignalBit)  |  transportMask | SIGBREAKF_CTRL_F | (1L<<configFileNotifySigBit);
-
+        DEBUGOUT((VERBOSE_DEVICE,"Unit Process: Enter service loop...\n"));
         //Unit Task Service Loop:
         for(;;)
         {
-            DEBUGOUT((VERBOSE_DEVICE,"\nDevice Unit Process: Just wait for signals\n"));
-            signals = Wait(waitmask);
-            DEBUGOUT((VERBOSE_DEVICE,"\nDevice Unit Process: Process event (signals=0x%lx)\n",signals));
+            //Waiting for any signal:
+            receivedSignals = Wait(0xffffffff);
+            DEBUGOUT((VERBOSE_DEVICE,"Unit Process: Process signal 0x%lx...\n", receivedSignals));
 
             /* Have we been signaled to shut down? */
-            if (signals & SIGBREAKF_CTRL_F) {
+            if (receivedSignals & SIGBREAKF_CTRL_F) {
                DEBUGOUT((VERBOSE_DEVICE,"Device Unit Process: SIGBREAKF_CTRL_F received.\n"));
                break;
             }
          
-            //Packet reads or writes ?
-            while((etherUnit->eu_State & ETHERUF_ONLINE) &&
-                  (hal_serviceWritePackets(etherUnit, globEtherDevice) || hal_serviceReadPackets(etherUnit, globEtherDevice)))
-            {
-               //Nothing. Repeat until nothing can be done.
-            };
+            //lowlevel hardware activity?
+            if (receivedSignals & (1l << etherUnit->eu_lowLevelDriverSignalNumber)) {
+               servLoopCounter = 0;
+               while(((etherUnit->eu_State & ETHERUF_ONLINE) && (servLoopCounter++ < 100)) &&
+                     (etherUnit->eu_lowLevelDriver->processEvents(etherUnit->eu_lowLevelDriver)))
+               {
+                  //Serve while looping. Nothing.
+               };
+            }
 
-            // An new or more IO Request(s) to perform?
-            if ((signals & (1l << msgPortSignalBit)))
+            // Activity for iorequests?
+            if ((receivedSignals & (1l << msgPortSignalBit)))
             {
                while ((ios2 = (void *) GetMsg((void *) etherUnit)) != NULL)
                {
-                  DEBUGOUT((VERBOSE_DEVICE, "Device Unit Process: Perform IORequest: cmd=%ld\n\n", ios2->ios2_Req.io_Command));
                   PerformIO(ios2, globEtherDevice);
-                  DEBUGOUT((VERBOSE_DEVICE, "Device Unit Process: IORequest finished\n"));
                }
             }
 
             // Configuration file changed?
-            if (signals & (1L<<configFileNotifySigBit))
+            if (receivedSignals & (1L<<configFileNotifySigBit))
             {
-                DEBUGOUT((VERBOSE_DEVICE,"receive file notify signal!\n\n"));
                 ReadConfig(globEtherDevice);
             }
          }
 
-         DEBUGOUT((VERBOSE_DEVICE,"Unit Process: Cleaning up all signal handlers...\n"));
+         DEBUGOUT((VERBOSE_DEVICE,"Unit Process: Leaving service loop...\n"));
 
          //stops access to the hardware in any way...
-         hal_deinitialization();
+         etherUnit->eu_lowLevelDriver->deinit(etherUnit->eu_lowLevelDriver);
 
          // Stop notification the config file
          EndNotify(&configNotify);
          bzero(&configNotify, sizeof (configNotify));
 
-         FreeSignal(etherUnit->eu_Sigbit);
-         etherUnit->eu_Sigbit = -1;
          FreeSignal(msgPortSignalBit);
          msgPortSignalBit = -1;
          FreeSignal(configFileNotifySigBit);
          configFileNotifySigBit = -1;
-
 
          /* Signal the other side we're exiting.  Make sure that
             we exit before they wake up by using the same trick
@@ -1057,7 +1056,6 @@ SAVEDS void DevProcEntry(void)
  *  - S2_ONLINE
  *  - S2_GetStationAddress
  *  - S2_CONFIGINTERFACE
- *  - DevCmdBurstOut
  **/
 #define PERFORM_NOW ((1L<<CMD_WRITE)     |            \
                      (1L<<CMD_READ)      |            \
@@ -1283,8 +1281,154 @@ VOID DevCmdWritePacket(STDETHERARGS)
         TermIO(ios2,globEtherDevice);
     }
 }
-///
- 
+
+
+/*
+ * Copy packet to given Sana 2 request. Returns true if packet was copied to the request.
+ * Returns falls when not for some reason.
+ */
+BOOL fulfillReadIORequest( struct DeviceDriver * etherDevice,
+                        struct DeviceDriverUnit * etherUnit,
+                        struct IOSana2Req * ios2,
+                        uint8_t * rawEtherPacket,
+                        uint16_t rawPacketLength
+                        )
+{
+   struct BufferManagement * bm;
+   BOOL bStatus=FALSE;
+   MacAddr * dstAddress = (MacAddr *) (rawEtherPacket+0);
+   MacAddr * srcAddress = (MacAddr *) (rawEtherPacket+6);
+   uint16_t pktType     = *(uint16_t*)(rawEtherPacket+12);
+   uint8_t * finalPayload;
+
+   bm = ios2->ios2_BufferManagement;
+   if (bm)
+   {
+      //IORequest for "raw" packets?
+      if(ios2->ios2_Req.io_Flags & SANA2IOF_RAW) {
+         //Raw:
+         finalPayload = rawEtherPacket;
+      } else {
+         //Cooked:
+         finalPayload = rawEtherPacket + 14;
+         rawPacketLength -= 14;
+      }
+
+      copyEthernetAddress((uint8_t*)dstAddress ,ios2->ios2_DstAddr);  // Destination address
+      copyEthernetAddress((uint8_t*)srcAddress ,ios2->ios2_SrcAddr);  // Source Address
+
+      ios2->ios2_PacketType = pktType;
+      ios2->ios2_DataLength = rawPacketLength;
+
+      //Check Broadcast / Multicast (bit 0 of first byte is "1" if multicast or broadcast)
+      if ((dstAddress->b[0] & 1) != 0 ) {
+         if (isBroadcastEthernetAddress((uint8_t*)dstAddress)) {
+            ios2->ios2_Req.io_Flags |= SANA2IOF_BCAST;
+         } else {
+            ios2->ios2_Req.io_Flags |= SANA2IOF_MCAST;
+         }
+      }
+
+      DEBUGOUT((VERBOSE_HW, "  IOReq DST    : ")); printEthernetAddress(ios2->ios2_DstAddr);  DEBUGOUT((VERBOSE_HW, "\n"));
+      DEBUGOUT((VERBOSE_HW, "  IOReq SRC    : ")); printEthernetAddress(ios2->ios2_SrcAddr);  DEBUGOUT((VERBOSE_HW, "\n"));
+      DEBUGOUT((VERBOSE_HW, "  IOReq LEN    : %ld\n", (ULONG)ios2->ios2_DataLength));
+      DEBUGOUT((VERBOSE_HW, "  IOReq TYP    : 0x%lx\n", (ULONG)ios2->ios2_PacketType));
+
+      // Frage Stack, ob er das Packet auch wirklich moechte (Paketfilter)!
+      if(CallFilterHook(bm->bm_PacketFilterHook, ios2, finalPayload))
+      {
+         DEBUGOUT((VERBOSE_HW,"  Filter hook passed. Result: Not skipped.\n"));
+         if(CopyToBuffer((ULONG)ios2->ios2_Data,(ULONG)finalPayload, rawPacketLength ))
+         {
+            DEBUGOUT((VERBOSE_HW,"CopyToBuffer() ok.\n"));
+            bStatus = true;
+         }
+         else
+         {
+            DEBUGOUT((VERBOSE_HW,"  Error CopyToBuffer()!\n"));
+            ios2->ios2_Req.io_Error = S2ERR_NO_RESOURCES;
+            ios2->ios2_WireError    = S2WERR_BUFF_ERROR;
+            DoEvent(S2EVENT_BUFF,etherUnit,globEtherDevice);
+         }
+
+         //Remove() is safe because we are in List lock when this function is called.
+         Remove((APTR)ios2);
+         TermIO(ios2,etherDevice);
+      } else {
+         DEBUGOUT((VERBOSE_HW,"  Filter hook passed. Result: Packet SKIPPED!\n"));
+      }
+   }
+
+   return bStatus;
+}
+
+
+/**
+ * Entry point of the lowleveldriver, an packet was received...
+ */
+static void onPktReceived(uint8_t * buffer, uint16_t size ) {
+   TRACE_DEBUG("onPktReceived:\n");
+
+   bool resultIsPacketDelivered;
+   struct BufferManagement *bm;
+   struct IOSana2Req *ios2;
+   const uint16_t packetType = *(uint16_t*)(buffer+12);
+
+   //TODO: Find a way to get back the driver unit that is used here. Currently this is always unit "0".
+   struct DeviceDriverUnit * etherUnit = globEtherDevice->ed_Units[0];
+
+
+   //
+   // Ask every stack if he wants to get the new packet...
+   //
+   resultIsPacketDelivered = FALSE;
+   ObtainSemaphore(&etherUnit->eu_BuffMgmtLock);
+   for (bm = (struct BufferManagement *) etherUnit->eu_BuffMgmt.mlh_Head;
+         bm->bm_Node.mln_Succ;
+         bm = (struct BufferManagement *) bm->bm_Node.mln_Succ) {
+      /*
+       ** wurde Packet noch nicht an diesen Stack kopiert ?  UND
+       ** gibt es IOReq-Reads in der Liste des Stacks ?
+       */
+      ObtainSemaphore((APTR) &bm->bm_RxQueueLock);
+      for (ios2 = GET_FIRST(bm->bm_RxQueue); //
+            ios2->ios2_Req.io_Message.mn_Node.ln_Succ; //
+            ios2 = (struct IOSana2Req *) (ios2->ios2_Req.io_Message.mn_Node.ln_Succ)) {
+
+         /* stimmt Packettyp ? EthernetII or IEEE 802.3 */
+         if ((ios2->ios2_PacketType == packetType)
+               || ((ios2->ios2_PacketType <= 1500) && (packetType <= 1500))) {
+
+            // Copy packet to IORequest...
+            resultIsPacketDelivered = fulfillReadIORequest(globEtherDevice, etherUnit, ios2, buffer, size );
+            break; // Enough for this stack
+         }
+      }
+      ReleaseSemaphore((APTR) &bm->bm_RxQueueLock);
+   }
+   ReleaseSemaphore(&etherUnit->eu_BuffMgmtLock);
+
+   /*
+    * If nobody wants that packet, try to find a read orphan listener who wants that.
+    */
+   if (!resultIsPacketDelivered) {
+      BOOL pktTransfered = FALSE;
+      DEBUGOUT((VERBOSE_HW, "No regular IORequest fits. Check 'Read Orphan List'...\n"));
+      ObtainSemaphore((APTR) &etherUnit->eu_ReadOrphanLock);
+      struct MinList * readOrphanList = &etherUnit->eu_ReadOrphan;
+      if (!IsListEmpty((struct List* )readOrphanList)) {
+         struct IOSana2Req * firstOrphan = GET_FIRST(etherUnit->eu_ReadOrphan);
+         DEBUGOUT((VERBOSE_HW, "At least one ReadOrphan is waiting (ioreq=0x%lx)\n", firstOrphan));
+         pktTransfered = fulfillReadIORequest(globEtherDevice, etherUnit, firstOrphan, buffer, size );
+      }
+      if (!pktTransfered) {
+         DEBUGOUT((VERBOSE_HW, "No request for packet. Packet dropped!\n"));
+      }
+      ReleaseSemaphore((APTR) &etherUnit->eu_ReadOrphanLock);
+   }
+}
+
+
 /*
 ** This function handles CMD_ONLINE commands.
 */
@@ -1303,17 +1447,26 @@ VOID DevCmdOnline(STDETHERARGS)
 
    if (!(etherUnit->eu_State & ETHERUF_ONLINE))
    {
-      //TODO connect
+      DEBUGOUT((VERBOSE_DEVICE,"###Set onReceivePkt callback...\n"));
 
-      /* In case someone wants to know...*/
+      //Set the callback receive function:
+      etherUnit->eu_lowLevelDriver->onPacketReceived = onPktReceived;
+      //Set driver online:
+      etherUnit->eu_lowLevelDriver->init  (etherUnit->eu_lowLevelDriver);
+      etherUnit->eu_lowLevelDriver->online(etherUnit->eu_lowLevelDriver);
+      //Get the signal number that is used in the lowLevelDriver...
+      etherUnit->eu_lowLevelDriverSignalNumber = etherUnit->eu_lowLevelDriver->getUsedSignalNumber(etherUnit->eu_lowLevelDriver);
+
+
+      etherUnit->eu_State |= ETHERUF_ONLINE;
+
       DoEvent(S2EVENT_ONLINE, etherUnit, globEtherDevice);
 
-      // Zeit des auf Online-gehends merken
       DateStamp(&StartTime);
       GlobStat.LastStart.tv_secs = StartTime.ds_Days * 24 * 60 * 60 + StartTime.ds_Minute * 60;
       GlobStat.LastStart.tv_micro = StartTime.ds_Tick;
 
-      //TODO: set Promisc Modus or not
+      //TODO: set Promisc mode or not
    }
 
    end:
@@ -1321,7 +1474,6 @@ VOID DevCmdOnline(STDETHERARGS)
    TermIO(ios2,globEtherDevice);
    DEBUGOUT((VERBOSE_DEVICE,"DevCmdOnline() ends.\n"));
 }
-///
 
 
 void DevCmdOffline(STDETHERARGS)
@@ -1337,7 +1489,8 @@ void DevCmdOffline(STDETHERARGS)
          // Alle evtl. ReadRequests abbrechen....
          DevCmdFlush(NULL, etherUnit, globEtherDevice);
 
-         //TODO go Offline
+         NetInterface * lowLevelDriver = (NetInterface*)initModule();
+         lowLevelDriver->offline(lowLevelDriver);
       }
 
       // going offline without an iorequest is possible!
@@ -1348,12 +1501,14 @@ void DevCmdOffline(STDETHERARGS)
    }
 ///
 
-///VOID DevCmdReadPacket(STDETHERARGS)
+
 VOID DevCmdReadPacket(STDETHERARGS)
 {
    struct BufferManagement *bm;
 
-   DEBUGOUT((VERBOSE_DEVICE,"\n*DevCmdReadPacket(type=%ld,ioreq=0x%lx)\n", (ULONG)ios2->ios2_PacketType, ios2));
+   DEBUGOUT((VERBOSE_DEVICE,"\n*DevCmdReadPacket(type=%ld,ioreq=0x%lx, %s)\n",
+         (ULONG)ios2->ios2_PacketType, ios2, ios2->ios2_Req.io_Flags & SANA2IOB_RAW ? "RAW" : "COOKED"));
+
    if (etherUnit->eu_State & ETHERUF_ONLINE)
    {
       /* Find the appropriate queue for this IO request */
@@ -1363,7 +1518,6 @@ VOID DevCmdReadPacket(STDETHERARGS)
          if (bm == (struct BufferManagement *) ios2->ios2_BufferManagement)
          {
             ObtainSemaphore((APTR) &bm->bm_RxQueueLock);
-            CHECK_ALREADY_QUEUED((struct List *) &bm->bm_RxQueue, (struct Node *) ios2);
 
             //Ensure that the request is marked as "pending" because the request can only be queued here...
             ios2->ios2_Req.io_Message.mn_Node.ln_Type = NT_MESSAGE;
@@ -1375,7 +1529,8 @@ VOID DevCmdReadPacket(STDETHERARGS)
          bm = (struct BufferManagement *) bm->bm_Node.mln_Succ;
       }
       ReleaseSemaphore(&etherUnit->eu_BuffMgmtLock);
-      /* Did we fall of the end of the list? */
+
+      //Check if something went wrong, fire error
       if (!bm->bm_Node.mln_Succ)
       {
          ios2->ios2_Req.io_Error = S2ERR_BAD_ARGUMENT;
@@ -1391,7 +1546,7 @@ VOID DevCmdReadPacket(STDETHERARGS)
       TermIO(ios2, globEtherDevice);
    }
 }
-///
+
 
 ///VOID DevCmdReadOrphan(STDETHERARGS)
 VOID DevCmdReadOrphan(STDETHERARGS)
@@ -1405,7 +1560,6 @@ VOID DevCmdReadOrphan(STDETHERARGS)
         ios2->ios2_Req.io_Message.mn_Node.ln_Type = NT_MESSAGE;
 
         ObtainSemaphore( (APTR)&etherUnit->eu_ReadOrphanLock);
-        CHECK_ALREADY_QUEUED((struct List *)&etherUnit->eu_ReadOrphan, (struct Node *)ios2);
         AddTail((struct List *)&etherUnit->eu_ReadOrphan, (struct Node *)ios2);
         ReleaseSemaphore((APTR)&etherUnit->eu_ReadOrphanLock);
     }
@@ -1460,7 +1614,6 @@ VOID DevCmdDeviceQuery(STDETHERARGS)
    TermIO(ios2, etherDevice);
 }
 
-
 /*
 ** This function handles S2_GETSTATIONADDRESS commands.
 ** This is usually the first command that is called by an stack.
@@ -1470,11 +1623,15 @@ VOID DevCmdGetStationAddress(STDETHERARGS)
 {
     DEBUGOUT((VERBOSE_DEVICE,"\n*DevCmdGetStationAddress\n"));
 
-    //TODO: get station address
+    NetInterface * lowLevelDriver = (NetInterface*)initModule();
+    lowLevelDriver->getDefaultNetworkAddress(lowLevelDriver, (MacAddr*)(etherUnit->eu_StAddr));
+    PRINT_ETHERNET_ADDRESS(etherUnit->eu_StAddr);
+
+    copyEthernetAddress(etherUnit->eu_StAddr,ios2->ios2_SrcAddr);
+    copyEthernetAddress(etherUnit->eu_StAddr,ios2->ios2_DstAddr);
 
     TermIO(ios2,globEtherDevice);
 }
-
 
 /**
  * This function handles S2_CONFIGINTERFACE commands.
@@ -1540,7 +1697,6 @@ VOID DevCmdTrackType(STDETHERARGS)
             stats->ss_PType = ios2->ios2_PacketType;
             if(ios2->ios2_PacketType == 2048)
                 etherUnit->eu_IPTrack = stats;
-            CHECK_ALREADY_QUEUED((struct List *)&etherUnit->eu_Track,(struct Node     *)stats);
             AddTail((struct List *)&etherUnit->eu_Track,(struct Node     *)stats);
             print(5,"Track packet type: "); printi(5,ios2->ios2_PacketType);
         }
@@ -1643,7 +1799,6 @@ VOID DevCmdOnEvent(STDETHERARGS)
 
     /* Queue anything else */
     Forbid();
-    CHECK_ALREADY_QUEUED((struct List *)&etherUnit->eu_Events,(struct Node *)ios2);
     AddTail((struct List *)&etherUnit->eu_Events,(struct Node *)ios2);
     Permit();
 }
@@ -1930,25 +2085,6 @@ BOOL checkStackSpace(int minStackSize)
    return TRUE;
 }
 
-/*
- * Checks if the given node is already queued in the device list.
- * If so alert!
- */
-void CHECK_ALREADY_QUEUED(struct List * list, struct Node * node)
-{
-#if DEBUG > 0
-   struct Node * minNode = list->lh_Head;
-   while (minNode->ln_Succ)
-   {
-      minNode = minNode->ln_Succ;
-
-      //Is this node already in list? This is an software Error!
-      if (node == minNode) {
-         Alert(1820);
-      }
-   }
-#endif
-}
 
 #if DEBUG > 0
 void printEthernetAddress(unsigned char * addr)
