@@ -1364,10 +1364,11 @@ BOOL fulfillReadIORequest( struct DeviceDriver * etherDevice,
       // Frage Stack, ob er das Packet auch wirklich moechte (Paketfilter)!
       if(CallFilterHook(bm->bm_PacketFilterHook, ios2, pktDataForIORequest))
       {
-         DEBUGOUT((VERBOSE_HW,"  Filter hook passed. Result: Not skipped.\n"));
+         //DEBUGOUT((VERBOSE_HW,"  Filter hook passed. Result: Not skipped.\n"));
          if(CopyToBuffer((ULONG)ios2->ios2_Data,(ULONG)pktDataForIORequest, rawPacketLength ))
          {
-            DEBUGOUT((VERBOSE_HW,"CopyToBuffer() ok.\n"));
+            DEBUGOUT((VERBOSE_HW,"Pkt copied successfully:\n"));
+            dumpMem(pktDataForIORequest,rawPacketLength);
             bStatus = true;
          }
          else
@@ -1482,8 +1483,11 @@ VOID DevCmdOnline(STDETHERARGS)
       etherUnit->eu_lowLevelDriver->init  (etherUnit->eu_lowLevelDriver);
       etherUnit->eu_lowLevelDriver->online(etherUnit->eu_lowLevelDriver);
       //Get the signal number that is used in the lowLevelDriver...
-      etherUnit->eu_lowLevelDriverSignalNumber = etherUnit->eu_lowLevelDriver->getUsedSignalNumber(etherUnit->eu_lowLevelDriver);
+      etherUnit->eu_lowLevelDriverSignalNumber
+         = etherUnit->eu_lowLevelDriver->getUsedSignalNumber(etherUnit->eu_lowLevelDriver);
 
+      //TODO: Wait until NIC is really online! You can't wait here!
+      Delay(2*50);
 
       etherUnit->eu_State |= ETHERUF_ONLINE;
 
@@ -1533,8 +1537,11 @@ VOID DevCmdReadPacket(STDETHERARGS)
 {
    struct BufferManagement *bm;
 
-   DEBUGOUT((VERBOSE_DEVICE,"\n*DevCmdReadPacket(type=%ld,ioreq=0x%lx, %s)\n",
-         (ULONG)ios2->ios2_PacketType, ios2, ios2->ios2_Req.io_Flags & SANA2IOB_RAW ? "RAW" : "COOKED"));
+   DEBUGOUT((VERBOSE_DEVICE,"\n*DevCmdReadPacket(type=%ld,ioreq=0x%lx, %s, datlen=%ld)\n",
+         (ULONG)ios2->ios2_PacketType,
+         ios2,
+         ios2->ios2_Req.io_Flags & SANA2IOB_RAW ? "RAW" : "COOKED",
+         ios2->ios2_DataLength));
 
    if (etherUnit->eu_State & ETHERUF_ONLINE)
    {

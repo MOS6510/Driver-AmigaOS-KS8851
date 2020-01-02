@@ -9,6 +9,32 @@
 #define printf(...) DoNotusePrintf
 #define assert(...) DoNotusePrintf
 
+/**
+  * Temporary disable all ints from NIC. Return old IER mask...
+  * @param interface
+  * @return
+  */
+ static uint16_t ksz8851DisableInterrupts(NetInterface * interface) {
+    Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
+    Disable();
+    context->intDisabledCounter++;
+    uint16_t oldMask = ksz8851ReadReg(interface, KSZ8851_REG_IER);
+    Enable();
+    return oldMask;
+ }
+
+ /**
+  * Enable all NIC its again (after disable)
+  * @param interface
+  * @param ierMask
+  */
+ static void ksz8851EnableInterrupts(NetInterface * interface, uint16_t ierMask) {
+    Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
+    Disable();
+    context->intDisabledCounter--;
+    ksz8851SetBit(interface, KSZ8851_REG_IER, ierMask);
+    Enable();
+ }
 
 /**
  * @brief Enable interrupts (must be called from right Amiga Task!)
@@ -166,13 +192,11 @@ error_t ksz8851Init(NetInterface *interface)
     //Restart auto-negotiation
     ksz8851SetBit(interface, KSZ8851_REG_P1CR, P1CR_RESTART_AN);
 
-    // at this point the its are not activated. Do this only when the interrupt handler is istnalled.
+    // At this point all ints are still not activated. Do this only when the interrupt handler is installed.
 
     //Successful initialization
     return NO_ERROR;
  }
-
-
 
  /**
   * Reset the NIC.
@@ -219,6 +243,11 @@ error_t ksz8851Init(NetInterface *interface)
     uint16_t isr;
     signaled = FALSE;
 
+    //
+    // The following 2 lines changes the command register! This is done by interrupt handler
+    // So it is always unsure to access the NIC registers with enabled interrupts!
+    //
+
     //Read interrupt status register
     isr = ksz8851ReadReg(interface, KSZ8851_REG_ISR);
     //Save IER register value
@@ -235,7 +264,7 @@ error_t ksz8851Init(NetInterface *interface)
     // Interrupt is definitely from our hardware !
     //
 
-    //Disable all interrupts to release the interrupt line
+    //Disable all interrupts to release the Amiga interrupt line
     ksz8851WriteReg(interface, KSZ8851_REG_IER, 0);
 
     //Link status change?
@@ -296,8 +325,7 @@ error_t ksz8851Init(NetInterface *interface)
        signaled = TRUE;
     }
 
-    //All handled interrupts are kept disabled! These must be re-enabled when interrupt reason
-    //was processed later.
+    //Re-enable all not handles ints again. All detected ints are still disabled and must be re-enabled later!
     ksz8851WriteReg(interface, KSZ8851_REG_IER, ier);
 
     //true: It's our interrupt event, false: not our interrupt
@@ -306,7 +334,7 @@ error_t ksz8851Init(NetInterface *interface)
 
 
  /**
-  * @brief KSZ8851 event handler (called from non-isr)
+  * @brief KSZ8851 event handler (called from non-isr, Amiga task)
   * @param[in] interface Underlying network interface
   **/
  bool ksz8851EventHandler(NetInterface *interface)
@@ -314,6 +342,15 @@ error_t ksz8851Init(NetInterface *interface)
     uint16_t status;
     uint8_t  frameCount;
     uint16_t enableMask = 0;
+
+    //
+    // All occurred NIC ints are still disabled when the method is called. but other ints can be still
+    // process!
+    //
+
+    //Because the function can be called at any time and an interrupt call chan change register access
+    //we must ensure, that we have exclusive access to the NIC registers by disabling all ints...
+    uint16_t oldIER = ksz8851DisableInterrupts(interface);
 
     //Read interrupt status register
     status = ksz8851ReadReg(interface, KSZ8851_REG_ISR);
@@ -364,10 +401,6 @@ error_t ksz8851Init(NetInterface *interface)
        //ACK (Clear) RX interrupt
        ksz8851WriteReg(interface, KSZ8851_REG_ISR, ISR_RXIS);
 
-       //Test HP: disable ALL ints:
-       uint16_t old_ier = ksz8851ReadReg(interface, KSZ8851_REG_IER);
-       ksz8851WriteReg(interface, KSZ8851_REG_IER, 0);
-
        //Get the total number of frames that are pending in the buffer (bits 15-8)
        uint16_t rxfctr = ksz8851ReadReg(interface, KSZ8851_REG_RXFCTR);
        frameCount = MSB(rxfctr);
@@ -382,9 +415,6 @@ error_t ksz8851Init(NetInterface *interface)
           frameCount--;
        }
        enableMask |= IER_RXIE;
-
-       //Test HP: enable state before again:
-       ksz8851WriteReg(interface, KSZ8851_REG_IER, old_ier);
     }
 
     //Receiver overruns?
@@ -410,12 +440,17 @@ error_t ksz8851Init(NetInterface *interface)
        enableMask |= IER_LDIE;
     }
 
-    //Re-enable handled interrupts again...
-    ksz8851SetBit(interface, KSZ8851_REG_IER, enableMask);
+    //Re-enable all handled interrupts again...
+    //ksz8851SetBit(interface, KSZ8851_REG_IER, enableMask | oldIER);
+
+    //Enable all ints again...
+    ksz8851EnableInterrupts(interface, enableMask | oldIER);
 
     //Every thing should be done. No need to call again...
     return false;
  }
+
+
 
  /**
   * @brief Send a packet
@@ -424,34 +459,39 @@ error_t ksz8851Init(NetInterface *interface)
   * @param[in] offset Offset to the first data byte
   * @return Error code
   **/
- error_t ksz8851SendPacket(NetInterface *interface, uint8_t * buffer, size_t length)
- {
+error_t ksz8851SendPacket(NetInterface *interface, uint8_t * buffer, size_t length)
+{
+    error_t result = NO_ERROR;
     size_t n;
     Ksz8851TxHeader header;
-    Ksz8851Context *context;
+    Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
 
-    TRACE_DEBUG("ksz8851: Send packet (len=%ld)\n", length);
-
-    //Point to the driver context
-    context = (Ksz8851Context *) interface->nicContext;
+    TRACE_DEBUG("ksz8851: Send packet (length=%ld)\n", length);
 
     //Check the frame length
     if(length > ETH_MAX_FRAME_SIZE)
     {
+       TRACE_INFO("ksz8851: Pkt to send is too huge (%ld)!\n", length);
        //The transmitter can accept another packet
        //osSetEvent(&interface->nicTxEvent);
        //Report an error
        return ERROR_INVALID_LENGTH;
     }
 
+    //Need to exclusive access the NIC registers now, store old IER mask
+    uint16_t oldIERMask = ksz8851DisableInterrupts(interface);
+
     //Get the amount of free memory available in the TX FIFO
     n = ksz8851ReadReg(interface, KSZ8851_REG_TXMIR) & TXMIR_TXMA_MASK;
 
     //Make sure enough memory is available
-    if((length + 8) > n)
-       return ERROR_FAILURE;
+    if((length + 8) > n) {
+       TRACE_INFO("ksz8851: Not enough space to send packet!\n");
+       result = ERROR_FAILURE;
+       goto end;
+    }
 
-    //HP: the structure seems to be fix little endian!
+    //HP: the structure seems to be fix little endian always!
     //Format control word
     header.controlWord = swap(TX_CTRL_TXIC | (context->frameId++ & TX_CTRL_TXFID));
     //Total number of bytes to be transmitted
@@ -472,8 +512,14 @@ error_t ksz8851Init(NetInterface *interface)
     ksz8851SetBit(interface, KSZ8851_REG_TXQCR, TXQCR_METFE);
 
     //Successful processing
-    return NO_ERROR;
- }
+    result = NO_ERROR;
+
+end:
+   //Enable all NIC ints again...
+   ksz8851EnableInterrupts(interface, oldIERMask);
+
+    return result;
+}
 
  /**
   * @brief Receive a packet
@@ -484,21 +530,8 @@ error_t ksz8851Init(NetInterface *interface)
  {
     uint16_t rxPktLength;
     uint16_t frameStatus;
-    Ksz8851Context *context;
-
-    //WARNING! VOLATILE! If not compiler would remove read from register! Also assign the reading from register!
-    volatile uint16_t dummy UNUSED; //VOLATILE!
-
-    /*
-    struct EthernetRxPacketHead {
-       uint16_t alignmentDummyBytes; //only when "RXIPHTOE" is set in "RXQCR"
-       MacAddr destAddress;
-       MacAddr sourceAddress;
-       uint16_t packetType;
-    } __end_packed packetHeader;*/
-
-    //Point to the driver context
-    context = (Ksz8851Context *)interface->nicContext;
+    Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
+    volatile uint16_t dummy UNUSED; //VOLATILE! If not set, compiler would remove read from register! Also assign the reading from register!
 
     //Read received frame status from RXFHSR
     frameStatus = ksz8851ReadReg(interface, KSZ8851_REG_RXFHSR);
@@ -535,8 +568,8 @@ error_t ksz8851Init(NetInterface *interface)
    //Read received frame byte size from RXFHBCR (Frame size + 4 bytes CRC)
    rxPktLength = ksz8851ReadReg(interface, KSZ8851_REG_RXFHBCR) & RXFHBCR_RXBC_MASK;
 
-   //Ensure the frame size is acceptable
-   if (rxPktLength > 0 && rxPktLength <= ETH_MAX_FRAME_SIZE) {
+   //Ensure the frame size is acceptable (the pkt contains the 4 byte checksum, so it could be 1514 + 4 bytes size!)
+   if (rxPktLength > 0 && rxPktLength <= (ETH_MAX_FRAME_SIZE + 4)) {
 
       //Reset QMU RXQ frame pointer to zero
       //HINT: The endian mode can't read back! So we need to set the complete register with mode bit set or
@@ -568,7 +601,7 @@ error_t ksz8851Init(NetInterface *interface)
 
       //Pass the packet to the upper layer
       if (interface->onPacketReceived) {
-         //jump oder the 2 dummy bytes of the packet //TODO:
+         //jump over the first 2 dummy bytes of the packet //TODO:
          interface->onPacketReceived(context->rxBuffer+2, rxPktLength-2);
       }
 
@@ -577,6 +610,7 @@ error_t ksz8851Init(NetInterface *interface)
 
    } else {
       TRACE_INFO(" Pkt size is invalid! (size=%ld)\n", (ULONG)rxPktLength);
+
       //Release the current error frame from RXQ
       ksz8851SetBit(interface, KSZ8851_REG_RXQCR, RXQCR_RRXEF);
 

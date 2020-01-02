@@ -21,12 +21,13 @@
   */
  static volatile uint8_t isr( REG(a1, NetInterface * interface) )
  {
+    Ksz8851Context * context = (Ksz8851Context*)interface->nicContext;
+
     //Call the handler. Check if the interrupt was from our hardware...
-    if (ksz8851IrqHandler(interface)) {
-       //COLORREG00 = 0xa;
+    if ((0 == context->intDisabledCounter) && ksz8851IrqHandler(interface)) {
+       COLORREG00 = 0xa;
 
        //Signal the service task
-       Ksz8851Context * context = (Ksz8851Context*)interface->nicContext;
        Signal(context->signalTask, (1 << context->sigNumber));
        context->signalCounter++;
 

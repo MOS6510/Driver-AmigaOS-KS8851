@@ -463,6 +463,7 @@ uint16_t swap(uint16_t);
     ULONG rxOverrun;                   //Overrun counter
     bool isInBigEndianMode;            //NIC is in big endian mode?
     uint_t frameId;                    //Identify a frame and its associated status
+    uint8_t intDisabledCounter;        //if >0 all NIC ints are disabled...
 
  } Ksz8851Context;
 
