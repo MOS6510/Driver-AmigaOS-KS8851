@@ -29,6 +29,7 @@
 #define ERROR_INVALID_PACKET -5
 #define NO_CHIP_FOUND -6
 
+#define STACK_SIZE_MINIMUM 5000
 
 #ifdef DEBUG
 extern void traceout(char * format, ...);
@@ -90,6 +91,8 @@ typedef struct _NetInterface {
    error_t (*sendPacket)(struct _NetInterface *, uint8_t * buffer, size_t length);
    bool (*sendPacketPossible)(struct _NetInterface *, uint16_t size);
    void (*getDefaultNetworkAddress)(struct _NetInterface *, MacAddr *);
+
+   const char * (*getConfigFileName)(void);
 
 
    //Accessing the TCP-Stack (from drivers Side): TODO move out...

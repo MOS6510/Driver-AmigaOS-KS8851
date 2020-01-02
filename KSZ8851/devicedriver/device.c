@@ -57,7 +57,7 @@
 #include "copybuffs.h"
 #include "devdebug.h"
 #include "helper.h"
-#include "hwl/hal.h"
+//#include "hwl/hal.h"
 #include "tools.h"
 #include "version.h"
 
@@ -75,7 +75,7 @@ static const char * DEVICE_TASK_NAME = DEVICE_NAME " unit task";
 
 static ULONG AbortRequestAndRemove(struct MinList *, struct IOSana2Req *,struct DeviceDriver *,struct SignalSemaphore * lock);
 static void  AbortReqList(struct MinList *minlist,struct DeviceDriver * EtherDevice);
-static BOOL  ReadConfig(struct DeviceDriver *);
+static BOOL  ReadConfig(struct DeviceDriver *,  const char * sConfigFile);
 static void DevProcEntry(void);
 static BOOL checkStackSpace(int minStackSize);
 
@@ -104,7 +104,7 @@ const UWORD DevRevision = (UWORD)DEVICE_REVISION;
 
 const char DevName[]     = DEVICE_NAME;
 const char DevIdString[] = VERSION_STRING;
-const char sConfigFile[] = DEFAULT_DEVICE_CONFIG_FILE;
+//const char sConfigFile[] = DEFAULT_DEVICE_CONFIG_FILE;
 
 //############ Globale Variablen ###############################################
 
@@ -811,7 +811,8 @@ struct DeviceDriverUnit *InitUnitProcess(ULONG s2unit, struct DeviceDriver *Ethe
                 NewList((struct List *)&etherUnit->eu_Track);
 
                 /* Try to read in our configuration file (again) */
-                if(ReadConfig(EtherDevice))
+                NetInterface * lowLevelDriver = initModule();
+                if(ReadConfig(EtherDevice, lowLevelDriver->getConfigFileName()))
                 {
                     /* Start up the unit process */
                     struct MsgPort * replyport = CreateMsgPort();
@@ -858,21 +859,19 @@ struct DeviceDriverUnit *InitUnitProcess(ULONG s2unit, struct DeviceDriver *Ethe
  * @param EtherDevice
  * @return
  */
-static BOOL ReadConfig( struct DeviceDriver *etherDevice )
+static BOOL ReadConfig( struct DeviceDriver *etherDevice, const char * sConfigFile )
 {
-    DEBUGOUT((VERBOSE_DEVICE, "ReadConfigFile: %s\n", DEFAULT_DEVICE_CONFIG_FILE));
+    DEBUGOUT((VERBOSE_DEVICE, "ReadConfigFile: %s\n", sConfigFile));
 
     RegistryInit( sConfigFile );
     {
-       debugLevel =                       1000; //ReadKeyInt("DEBUGLEV"       , false);
-       etherDevice->ed_showMessages   =   ReadKeyInt("SHOWMESSAGES"   , true);
+       debugLevel = ReadKeyInt("DEBUGLEV" , false);
     }
     RegistryDestroy();
 
     DEBUGOUT((VERBOSE_DEVICE,"\n\n ##### " DEVICE_NAME " Device #####\n"));
     DEBUGOUT((VERBOSE_DEVICE,"%s\n", DevIdString));
     DEBUGOUT((VERBOSE_DEVICE,"DebugLev= %ld\n", (LONG)debugLevel));
-    DEBUGOUT((VERBOSE_DEVICE,"verboseonerror= %ld\n", (LONG)globEtherDevice->ed_showMessages));
 
     return true;
 }
@@ -971,6 +970,8 @@ SAVEDS void DevProcEntry(void)
     if(etherUnit->eu_Proc)    
     {    
         int servLoopCounter;
+        NetInterface * lowLevelDriver = initModule();
+        const char * sConfigFile = lowLevelDriver->getConfigFileName();
     
         // Init DOS Notify for etherbridge.config file
         configFileNotifySigBit = AllocSignal(-1);
@@ -1016,7 +1017,7 @@ SAVEDS void DevProcEntry(void)
             // Configuration file changed?
             if (receivedSignals & (1L<<configFileNotifySigBit))
             {
-                ReadConfig(globEtherDevice);
+                ReadConfig(globEtherDevice, lowLevelDriver->getConfigFileName());
             }
 
             //Service send packets if needed...
@@ -1288,6 +1289,8 @@ VOID DevCmdWritePacket(STDETHERARGS)
     }
 }
 
+#define MIN(a,b) ((a) < (b)) ? (a) : (b)
+
 
 /*
  * Copy packet to given Sana 2 request. Returns true if packet was copied to the request.
@@ -1302,27 +1305,45 @@ BOOL fulfillReadIORequest( struct DeviceDriver * etherDevice,
 {
    struct BufferManagement * bm;
    BOOL bStatus=FALSE;
-   MacAddr * dstAddress = (MacAddr *) (rawEtherPacket+0);
-   MacAddr * srcAddress = (MacAddr *) (rawEtherPacket+6);
-   uint16_t pktType     = *(uint16_t*)(rawEtherPacket+12);
-   uint8_t * finalPayload;
+   MacAddr * dstAddress   = (MacAddr *) (rawEtherPacket+0);
+   MacAddr * srcAddress   = (MacAddr *) (rawEtherPacket+6);
+   uint16_t pktType       = *(uint16_t*)(rawEtherPacket+12);
+   uint8_t * pktDataForIORequest = rawEtherPacket;
+
 
    bm = ios2->ios2_BufferManagement;
    if (bm)
    {
-      //IORequest for "raw" packets?
-      if(ios2->ios2_Req.io_Flags & SANA2IOF_RAW) {
-         //Raw:
-         finalPayload = rawEtherPacket;
-      } else {
-         //Cooked:
-         finalPayload = rawEtherPacket + 14;
+      if(!(ios2->ios2_Req.io_Flags & SANA2IOF_RAW)) {
+
+         //
+         // Cooked:
+         //
+
+         //Tighten the packet to only the payload itself...
+         pktDataForIORequest += 14;
          rawPacketLength -= 14;
+
+         //Respect MTU...
+         if (rawPacketLength > 1500) {
+            rawPacketLength = 1500;
+         }
+      } else {
+
+         //
+         // RAW:
+         //
+
+         //Respect MTU...
+         if (rawPacketLength > 1514) {
+            rawPacketLength = 1514;
+         }
       }
 
+      //Copy addresses
       copyEthernetAddress((uint8_t*)dstAddress ,ios2->ios2_DstAddr);  // Destination address
       copyEthernetAddress((uint8_t*)srcAddress ,ios2->ios2_SrcAddr);  // Source Address
-
+      //Copy packet type + packet length....
       ios2->ios2_PacketType = pktType;
       ios2->ios2_DataLength = rawPacketLength;
 
@@ -1341,10 +1362,10 @@ BOOL fulfillReadIORequest( struct DeviceDriver * etherDevice,
       DEBUGOUT((VERBOSE_HW, "  IOReq TYP    : 0x%lx\n", (ULONG)ios2->ios2_PacketType));
 
       // Frage Stack, ob er das Packet auch wirklich moechte (Paketfilter)!
-      if(CallFilterHook(bm->bm_PacketFilterHook, ios2, finalPayload))
+      if(CallFilterHook(bm->bm_PacketFilterHook, ios2, pktDataForIORequest))
       {
          DEBUGOUT((VERBOSE_HW,"  Filter hook passed. Result: Not skipped.\n"));
-         if(CopyToBuffer((ULONG)ios2->ios2_Data,(ULONG)finalPayload, rawPacketLength ))
+         if(CopyToBuffer((ULONG)ios2->ios2_Data,(ULONG)pktDataForIORequest, rawPacketLength ))
          {
             DEBUGOUT((VERBOSE_HW,"CopyToBuffer() ok.\n"));
             bStatus = true;
@@ -2105,7 +2126,7 @@ static bool serviceWritePackets(struct DeviceDriverUnit *etherUnit, struct Devic
          //
          // RAW:
          //
-         TRACE_INFO("  Send raw packet...\n");
+         TRACE_INFO("  Send raw packet:\n");
 
          if (ios2->ios2_DataLength > 14) {
             if (CopyFromBuffer((ULONG)sendBuffer, (ULONG)(ios2->ios2_Data), ios2->ios2_DataLength)) {
@@ -2142,7 +2163,7 @@ static bool serviceWritePackets(struct DeviceDriverUnit *etherUnit, struct Devic
             DEBUGOUT((VERBOSE_HW, "    Dst MAC         : ")); printEthernetAddress(sendBuffer+0); DEBUGOUT((VERBOSE_HW,"\n"));
             DEBUGOUT((VERBOSE_HW, "    Src MAC         : ")); printEthernetAddress(sendBuffer+6); DEBUGOUT((VERBOSE_HW,"\n"));
 
-            //Copy packet content and send....
+            //Add payload:
             if (CopyFromBuffer((ULONG )(sendBuffer + ETHER_PACKET_HEAD_SIZE), (ULONG )ios2->ios2_Data, ios2->ios2_DataLength)) {
                int len = ios2->ios2_DataLength + ETHER_PACKET_HEAD_SIZE + pad;
                dumpMem(sendBuffer, len);

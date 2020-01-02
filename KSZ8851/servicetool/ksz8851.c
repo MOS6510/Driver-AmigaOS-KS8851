@@ -995,6 +995,10 @@ void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length) {
     ksz8851DumpReg(interface);
  }
 
+ static const char * ksz8851GetConfigFileName(void) {
+    return "env:sana2/ksz8851.config";
+ }
+
  static Ksz8851Context context = {
        .signalTask = NULL,
        .sigNumber = -1
@@ -1011,6 +1015,7 @@ void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length) {
        .sendPacketPossible       = ksz8851SendPacketPossible,
        .sendPacket               = ksz8851SendPacket,
        .getDefaultNetworkAddress = ksz8851GetStationAddress,
+       .getConfigFileName        = ksz8851GetConfigFileName,
        .nicContext = (Ksz8851Context*)&context,
  };
 

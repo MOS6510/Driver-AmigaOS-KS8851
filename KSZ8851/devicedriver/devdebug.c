@@ -13,7 +13,7 @@
 #include <proto/exec.h>
 #include <clib/debug_protos.h>
 
-int debugLevel = 1000; //off: debuglevel = 0
+int debugLevel = 0; //off: 0  on:1000
 
 #if DEBUG > 0
 
@@ -22,7 +22,7 @@ VOID vkprintf( CONST_STRPTR formatString, CONST APTR values );
 
 void printdebug(short dbLevel, char * format, ...)
 {
-   //if (debugLevel >= dbLevel)
+   if (debugLevel >= dbLevel)
    {
       Disable();
       va_list args;
@@ -34,24 +34,26 @@ void printdebug(short dbLevel, char * format, ...)
 }
 
 void traceout(char * format, ...) {
-   Disable();
-   va_list args;
-   va_start(args,format);
-   KVPrintF(format, args);
-   va_end( args );
-   Enable();
+   if (debugLevel > 0) {
+      Disable();
+      va_list args;
+      va_start(args,format);
+      KVPrintF(format, args);
+      va_end( args );
+      Enable();
+   }
 }
 
 void print(short dbLevel, char * text)
 {
-   Disable();
-   //if (debugLevel >= dbLevel)
+   if (debugLevel >= dbLevel)
    {
+      Disable();
       while(*text) {
          KPutChar(*(text++));
       }
+      Enable();
    }
-   Enable();
 }
 
 static char text[]="0x00000000\n\0";
