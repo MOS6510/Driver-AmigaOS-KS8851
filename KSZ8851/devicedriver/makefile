@@ -43,6 +43,7 @@ all: builddir $(BUILDDIR)/$(DEVICE_NAME).$(ARCH)
 
 addToAdf:
 	@echo "Add to ADF file:"
+	@$(XDFTOOL) $(ADFIMAGE) format "Amiga1200+Tools" + makedir "network" || true
 	@$(XDFTOOL) $(ADFIMAGE) delete "network/"$(DEVICE_NAME).$(ARCH) || true
 	@$(XDFTOOL) $(ADFIMAGE) write  $(BUILDDIR)/$(DEVICE_NAME).$(ARCH) "network"
 	

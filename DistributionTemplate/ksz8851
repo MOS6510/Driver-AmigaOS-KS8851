@@ -1,0 +1,59 @@
+# $VER: Amiga1200+ ksz8851 1.0 (04.01.2020)
+#
+# Configuration for the Amiga 1200+ build-in Ethernet chip ("ksz8851").
+
+# The device name is mandatory
+device=ksz8851.device
+
+# If not provided, unit number 0 will be used. You may
+# have to change this if there are multiple cards of the
+# same type installed in your machine, or if your network
+# hardware supports several independent connections
+unit=0
+
+# You must either pick a fixed (static) IPv4 address and
+# a corresponding subnet mask, or request DHCP (dynamic)
+# network address configuration.
+# You can combine address/netmask/dhcp, which has the effect
+# of asking the DHCP server to assign the requested IPv4
+# address and subnet mask to this interface, if possible.
+#address=192.168.0.1
+#netmask=255.255.255.0
+configure=dhcp
+
+# If no DHCP server is present in your network, you can
+# use automatic interface IPv4 address assignment through
+# the ZeroConf protocol. Note that this will not set up
+# default route and DNS servers for you, only the interface
+# address is configured.
+#configure=auto
+
+# This variant of automatic IPv4 address assignment should
+# be used in a wireless network instead of 'configure=auto'
+#configure=fastauto
+
+# You can enable diagnostic messages which can be helpful in
+# tracking down configuration errors.
+#debug=yes
+
+# You can choose how much memory will be used when handling
+# incoming and outgoing network traffic for this device.
+# The default is to reserve 32 buffers of 1500 byte each, both
+# inbound and outbound traffic. Larger values may provide
+# better performance.
+#iprequests=32
+#writerequests=32
+
+# For diagnostic and monitoring purposes it can be helpful to
+# capture network traffic that flows through this interface.
+# To enable this option, select one of filter=local,
+# filter=ipandarp or filter=everything
+#filter=local
+#filter=ipandarp
+#filter=everything
+
+# This option disables a workaround required for the Ariadne
+# network hardware, which, if enabled, would otherwise cause
+# the interface setup procedure to take longer than really
+# necessary.
+requiresinitdelay=yes

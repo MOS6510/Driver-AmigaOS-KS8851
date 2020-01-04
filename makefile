@@ -43,7 +43,7 @@ HWL  = ../servicetool/build/build-$(ARCH)/libksz8851.a
                           
 export CCPATH CC LD CXX CFLAGS LDFLAGS RANLIB AR LD AOS_INCLUDES OS_INCLUDES CFLAGS ARCH PROJ_ROOT XDFTOOL AMIGA_EXPLORER HWL NM ADFIMAGE
 
-.PHONY: install clean all debug
+.PHONY: install clean all debug createDistribution
 
 # Release version: make
 all: 	CFLAGS += -s
@@ -51,7 +51,7 @@ all: 	LDFLAGS += -s
 all:
 	@$(MAKE) -C KSZ8851/servicetool
 	@$(MAKE) -C KSZ8851/devicedriver
-	$(XDFTOOL) $(ADFIMAGE) list
+	@$(MAKE) createDistribution
 	
 # Debug version: make debug
 debug:  CFLAGS += -DDEBUG -g
@@ -67,4 +67,15 @@ clean:
 	@$(MAKE) -C KSZ8851/servicetool  clean
 	@$(MAKE) -C KSZ8851/devicedriver clean
 	rm -f $(ADFIMAGE)
+	
+createDistribution:
+	@$(XDFTOOL) $(ADFIMAGE) write DistributionTemplate/install
+	@$(XDFTOOL) $(ADFIMAGE) write DistributionTemplate/install.info
+	@$(XDFTOOL) $(ADFIMAGE) write DistributionTemplate/ksz8851      
+	@$(XDFTOOL) $(ADFIMAGE) write DistributionTemplate/ksz8851.info
+	@$(XDFTOOL) $(ADFIMAGE) write DistributionTemplate/ksz8851.config
+	@$(XDFTOOL) $(ADFIMAGE) list
+	
+	
+	
 	

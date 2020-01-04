@@ -1,0 +1,18 @@
+; Q&D Install script for Amiga 1200+ ksz8851 network device driver
+; Roadshow MUST be installed first!
+
+echo "### Amiga 1200+ Network Driver ksz8851 Installation ###"
+echo "Copy network device and config"
+copy :network/ksz8851.device.020 to devs:networks/ksz8851.device
+copy :ksz8851.config to env:sana2/
+copy :ksz8851.config to envarc:sana2/
+
+
+;Roadshow:
+
+echo "Copy configuration for Roadshow TCP Stack..."
+copy :ksz8851 to devs:NetInterfaces/ksz8851
+copy :ksz8851.info to devs:NetInterfaces/ksz8851.info
+
+echo "Installtion complete!"
+echo "You may start Roadshow now with 'c:AddNetInterface ksz8851'."

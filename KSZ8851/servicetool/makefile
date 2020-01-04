@@ -32,10 +32,10 @@ LDFLAGS += -L$(BUILDDIR)
 all: builddir $(BUILDDIR)/ksz8851
 
 addToADF:
-	@echo "Create ADF file..." 
-	@$(XDFTOOL) $(ADFIMAGE) format "Amiga1200+Tools" + makedir "network" || true
-	@$(XDFTOOL) $(ADFIMAGE) delete "network/ksz8851" || true
-	@$(XDFTOOL) $(ADFIMAGE) write $(BUILDDIR)/ksz8851 "network"
+	#@echo "Create ADF file..." 
+	#@$(XDFTOOL) $(ADFIMAGE) format "Amiga1200+Tools" + makedir "network" || true
+	#@$(XDFTOOL) $(ADFIMAGE) delete "network/ksz8851" || true
+	#@$(XDFTOOL) $(ADFIMAGE) write $(BUILDDIR)/ksz8851 "network"
 
 	
 builddir:
