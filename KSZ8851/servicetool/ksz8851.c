@@ -12,6 +12,7 @@
 //Values of the GRR Register:
 #define GRR_NO_RESET          0
 
+#if 0
 /**
   * Temporary disable all ints from NIC. Return old IER mask...
   * @param interface
@@ -39,6 +40,7 @@
     ksz8851SetBit(interface, KSZ8851_REG_IER, ierMask);
     Enable();
  }
+#endif
 
 /**
  * @brief Enable interrupts (must be called from right Amiga Task!)

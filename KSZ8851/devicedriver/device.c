@@ -955,9 +955,9 @@ SAVEDS void DevProcEntry(void)
     /* Initialize our Transmit Request lists. Because it's a Message port
      * Forbid and Permit is used for locks. */
     etherUnit->eu_Tx = CreateMsgPort();
-    etherUnit->eu_Tx->mp_SigBit  = AllocSignal(-1L);
+    /*etherUnit->eu_Tx->mp_SigBit  = AllocSignal(-1L);
     etherUnit->eu_Tx->mp_SigTask = (struct Task *)proc;
-    etherUnit->eu_Tx->mp_Flags   = PA_SIGNAL;
+    etherUnit->eu_Tx->mp_Flags   = PA_SIGNAL;*/
 
     /* alles in Ordnung */
     etherUnit->eu_Proc = proc;
@@ -1000,10 +1000,10 @@ SAVEDS void DevProcEntry(void)
             }
 
             //New packets to send?
-            if (receivedSignals & (1l << etherUnit->eu_Tx->mp_SigBit)) {
+            /*if (receivedSignals & (1l << etherUnit->eu_Tx->mp_SigBit)) {
                DEBUGOUT((VERBOSE_DEVICE,"Device Unit Process: Processing TX packets.\n"));
                sendAllPackets(etherUnit,globEtherDevice);
-            }
+            }*/
 
             //perform IORequest that should be done by the uni process...
             if ((receivedSignals & (1l << etherUnit->eu_Unit.unit_MsgPort.mp_SigBit)))
@@ -1276,6 +1276,9 @@ VOID DevCmdWritePacket(STDETHERARGS)
             ios2->ios2_Req.io_Flags &= ~IOF_QUICK;
             ios2->ios2_Req.io_Message.mn_Node.ln_Type = NT_MESSAGE;
             PutMsg((APTR)etherUnit->eu_Tx,(APTR)ios2);
+
+            //Let's process packet is now!
+            sendAllPackets(etherUnit,etherDevice);
         }
         else
         {
