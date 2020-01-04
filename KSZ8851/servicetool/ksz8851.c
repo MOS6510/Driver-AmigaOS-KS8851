@@ -9,6 +9,9 @@
 #define printf(...) DoNotusePrintf
 #define assert(...) DoNotusePrintf
 
+//Values of the GRR Register:
+#define GRR_NO_RESET          0
+
 /**
   * Temporary disable all ints from NIC. Return old IER mask...
   * @param interface
@@ -19,6 +22,7 @@
     Disable();
     context->intDisabledCounter++;
     uint16_t oldMask = ksz8851ReadReg(interface, KSZ8851_REG_IER);
+    ksz8851WriteReg(interface, KSZ8851_REG_IER, 0); //disable all ints...
     Enable();
     return oldMask;
  }
@@ -44,19 +48,21 @@ void ksz8851Online(NetInterface *interface)
 {
    installInterruptHandler(interface);
 
+   Disable();
    //Clear interrupt flags
    ksz8851SetBit(interface, KSZ8851_REG_ISR, ISR_LCIS | ISR_TXIS |
          ISR_RXIS | ISR_RXOIS | ISR_TXPSIS | ISR_RXPSIS | ISR_TXSAIS |
          ISR_RXWFDIS | ISR_RXMPDIS | ISR_LDIS | ISR_EDIS | ISR_SPIBEIS);
 
    //Configure interrupts as desired (this enables interrupts. Be sure that the ISR is installed!)
-   ksz8851SetBit(interface, KSZ8851_REG_IER, IER_LCIE | IER_TXIE | IER_RXIE | IER_RXOIE);
+   ksz8851SetBit(interface, KSZ8851_REG_IER, IER_LCIE | /*IER_TXIE |*/ IER_RXIE | IER_RXOIE);
 
    //Enable TX operation
    ksz8851SetBit(interface, KSZ8851_REG_TXCR, TXCR_TXE);
 
    //Enable RX operation
    ksz8851SetBit(interface, KSZ8851_REG_RXCR1, RXCR1_RXE);
+   Enable();
 }
 
 
@@ -80,7 +86,22 @@ void ksz8851Offline(NetInterface *interface)
 
 static void ksz8851PrintNICEndiness(Ksz8851Context * context) {
     TRACE_INFO("Current Endian Mode: %s\n", context->isInBigEndianMode ? "BE" : "LE");
- }
+}
+
+/**
+ * Change endianness mode of the NIC
+ * @param bigEndian
+ */
+static void ksz8851SwitchEndianessMode(NetInterface *interface, bool bigEndian) {
+   Ksz8851Context * context = (Ksz8851Context *)interface->nicContext;
+   uint16_t value = ksz8851ReadReg(interface, KSZ8851_REG_RXFDPR);
+   if (bigEndian) {
+      value |= RXFDPR_EMS; //Bit 11 = 1   => BigEndian, Bit can't read back!
+   }
+   ksz8851WriteReg(interface, KSZ8851_REG_RXFDPR, value);
+   //Change mode so that all functions still can talk to the chip!
+   context->isInBigEndianMode = bigEndian;
+}
 
 /**
  * Probes for the NIC, detect which mode is used (big endian oder little endian)
@@ -93,7 +114,7 @@ static error_t ksz8851DetectNICEndiness(NetInterface *interface) {
 
    //Check in which mode the NIC is now
    if (ksz8851ReadReg(interface, KSZ8851_REG_CIDER) != KSZ8851_REV_A3_ID) {
-      context->isInBigEndianMode = !context->isInBigEndianMode;
+      context->isInBigEndianMode = !context->isInBigEndianMode; //toggle endian mode and try again...
       if (ksz8851ReadReg(interface, KSZ8851_REG_CIDER) != KSZ8851_REV_A3_ID) {
          return NO_CHIP_FOUND;
       }
@@ -109,8 +130,12 @@ static error_t ksz8851DetectNICEndiness(NetInterface *interface) {
   **/
 error_t ksz8851Init(NetInterface *interface)
  {
+    error_t result = NO_ERROR;
+
     //Point to the driver context
     Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
+
+    Disable();
 
     //Debug message
     TRACE_INFO("Initializing KSZ8851 Ethernet controller...\r\n");
@@ -118,26 +143,38 @@ error_t ksz8851Init(NetInterface *interface)
     //Try to detect NIC and the current endian mode...
     uint8_t tries = 2;
     do {
-       if (ksz8851DetectNICEndiness(interface)) {
+       if (NO_ERROR == ksz8851DetectNICEndiness(interface)) {
           break;
        }
-       TRACE_INFO("Problem to detect NIC and his endian mode. Hopefully leaving reset state...\n");
-       context->isInBigEndianMode = true;
-       ksz8851WriteReg(interface, KSZ8851_REG_GRR, 0);
+
+       TRACE_INFO("Unable to detect NIC in endian mode '%s'). Now hard resetting NIC in both modes...\n",
+             context->isInBigEndianMode ? "big" : "little");
        context->isInBigEndianMode = false;
-       ksz8851WriteReg(interface, KSZ8851_REG_GRR, 0);
-       //leaving in LE mode here...
+       ksz8851WriteReg(interface, KSZ8851_REG_GRR, GRR_GLOBAL_SOFT_RST);
+       ksz8851WriteReg(interface, KSZ8851_REG_GRR, GRR_NO_RESET);
+       context->isInBigEndianMode = true;
+       ksz8851WriteReg(interface, KSZ8851_REG_GRR, GRR_GLOBAL_SOFT_RST);
+       ksz8851WriteReg(interface, KSZ8851_REG_GRR, GRR_NO_RESET);
+       //Let it in BE mode which is preferred mode for 68k processors
+
+       //Wait a little bit...
+       //Delay(12);
+
     } while(tries--);
 
-    //Make a QMU receiver reset only (hopefully keeps endian mode)
-    ksz8851SoftReset(interface,2);
+    //Make a QMU receiver reset only (keeps endian mode)
+    ksz8851SoftReset(interface,GRR_QMU_MODULE_SOFT_RST);
 
     //Re-detect NIC after reset...
     if (ksz8851ReadReg(interface, KSZ8851_REG_CIDER) != KSZ8851_REV_A3_ID) {
-       TRACE_INFO("Unable to detect NIC!\n");
+       TRACE_INFO("Finally unable to detect NIC!\n");
        ksz8851DumpReg(interface);
-       return ERROR_WRONG_IDENTIFIER;
+       result = ERROR_WRONG_IDENTIFIER;
+       goto end;
     }
+
+    //Fixed switch to BIG endian mode...
+    ksz8851SwitchEndianessMode(interface, true);
 
     ksz8851PrintNICEndiness(context);
 
@@ -157,7 +194,8 @@ error_t ksz8851Init(NetInterface *interface)
        //Clean up side effects
        memPoolFree(context->rxBuffer);
 
-       return ERROR_OUT_OF_MEMORY;
+       result = ERROR_OUT_OF_MEMORY;
+       goto end;
     }
 
     //Initialize MAC address
@@ -194,8 +232,12 @@ error_t ksz8851Init(NetInterface *interface)
 
     // At this point all ints are still not activated. Do this only when the interrupt handler is installed.
 
+    end:
+
+    Enable();
+
     //Successful initialization
-    return NO_ERROR;
+    return result;
  }
 
  /**
@@ -334,7 +376,7 @@ error_t ksz8851Init(NetInterface *interface)
 
 
  /**
-  * @brief KSZ8851 event handler (called from non-isr, Amiga task)
+  * @brief KSZ8851 event handler (called from non-isr, => Amiga task)
   * @param[in] interface Underlying network interface
   **/
  bool ksz8851EventHandler(NetInterface *interface)
@@ -348,9 +390,10 @@ error_t ksz8851Init(NetInterface *interface)
     // process!
     //
 
-    //Because the function can be called at any time and an interrupt call chan change register access
-    //we must ensure, that we have exclusive access to the NIC registers by disabling all ints...
-    uint16_t oldIER = ksz8851DisableInterrupts(interface);
+    //Because the function can be called at any time and an interrupt call can change registers contents
+    //we must ensure, that we have exclusive access to the NIC registers by disabling all NIC ints...
+    //uint16_t oldIER = ksz8851DisableInterrupts(interface);
+    Disable();
 
     //Read interrupt status register
     status = ksz8851ReadReg(interface, KSZ8851_REG_ISR);
@@ -388,11 +431,11 @@ error_t ksz8851Init(NetInterface *interface)
           interface->linkState = FALSE;
        }
 
-       enableMask |= IER_LCIE;
-
        if (interface->linkChangeFunction) {
           interface->linkChangeFunction(interface);
        }
+
+       enableMask |= IER_LCIE;
     }
 
     //Check whether a packet has been received?
@@ -440,11 +483,17 @@ error_t ksz8851Init(NetInterface *interface)
        enableMask |= IER_LDIE;
     }
 
-    //Re-enable all handled interrupts again...
-    //ksz8851SetBit(interface, KSZ8851_REG_IER, enableMask | oldIER);
+    //Packet was send?
+    if (status & IER_TXIE) {
+       enableMask |= IER_TXIE;
+    }
+
+    //Re-enable handled interrupts again...
+    ksz8851SetBit(interface, KSZ8851_REG_IER, enableMask);
 
     //Enable all ints again...
-    ksz8851EnableInterrupts(interface, enableMask | oldIER);
+    //ksz8851EnableInterrupts(interface, enableMask);
+    Enable();
 
     //Every thing should be done. No need to call again...
     return false;
@@ -469,29 +518,28 @@ error_t ksz8851SendPacket(NetInterface *interface, uint8_t * buffer, size_t leng
     TRACE_DEBUG("ksz8851: Send packet (length=%ld)\n", length);
 
     //Check the frame length
-    if(length > ETH_MAX_FRAME_SIZE)
+    if(length < 46 || length > ETH_MAX_FRAME_SIZE)
     {
-       TRACE_INFO("ksz8851: Pkt to send is too huge (%ld)!\n", length);
-       //The transmitter can accept another packet
-       //osSetEvent(&interface->nicTxEvent);
+       TRACE_INFO("ksz8851: Pkt length is not valid (%ld)!\n", length);
        //Report an error
        return ERROR_INVALID_LENGTH;
     }
 
     //Need to exclusive access the NIC registers now, store old IER mask
-    uint16_t oldIERMask = ksz8851DisableInterrupts(interface);
+    //uint16_t oldIERMask = ksz8851DisableInterrupts(interface);
+    Disable();
 
     //Get the amount of free memory available in the TX FIFO
     n = ksz8851ReadReg(interface, KSZ8851_REG_TXMIR) & TXMIR_TXMA_MASK;
 
     //Make sure enough memory is available
     if((length + 8) > n) {
-       TRACE_INFO("ksz8851: Not enough space to send packet!\n");
+       TRACE_INFO("######### ksz8851: Not enough space to send packet!\n");
        result = ERROR_FAILURE;
        goto end;
     }
 
-    //HP: the structure seems to be fix little endian always!
+    //The structure seems to be fix little endian always!
     //Format control word
     header.controlWord = swap(TX_CTRL_TXIC | (context->frameId++ & TX_CTRL_TXFID));
     //Total number of bytes to be transmitted
@@ -505,6 +553,7 @@ error_t ksz8851SendPacket(NetInterface *interface, uint8_t * buffer, size_t leng
 
     //Write data
     ksz8851WriteFifo(interface, buffer, length);
+
     //End TXQ write access
     ksz8851ClearBit(interface, KSZ8851_REG_RXQCR, RXQCR_SDA);
 
@@ -515,10 +564,12 @@ error_t ksz8851SendPacket(NetInterface *interface, uint8_t * buffer, size_t leng
     result = NO_ERROR;
 
 end:
-   //Enable all NIC ints again...
-   ksz8851EnableInterrupts(interface, oldIERMask);
 
-    return result;
+   //Enable all NIC ints again...
+   //ksz8851EnableInterrupts(interface, oldIERMask);
+   Enable();
+
+   return result;
 }
 
  /**
@@ -589,21 +640,29 @@ end:
       //But before I can read the whole packet, I have no clue that type it is. I can't discard the packet.
       //I have to copy twice the packet.
 
-      //Read 16 frame header first (2 byte align, destination, source, type, payload)...
-      //ksz8851ReadFifo(interface, (uint8_t*)&packetHeader, sizeof(packetHeader));
-      //TODO:  Ask the receive if he really wants the packet!
-      //Read rest of the frame...
-      //rxPktLength -= sizeof(packetHeader);
+      //Read Ethernet packet:
+      // - 2 dummy bytes,
+      // - 6 bytes destination,
+      // - 6 bytes source,
+      // - 2 bytes packet type
+      // - X bytes data payload
+      // - 4 bytes checksum
       ksz8851ReadFifo(interface, context->rxBuffer, rxPktLength );
 
-      //End RXQ read access (clear the bit!)
+      //End RXQ read access
       ksz8851ClearBit(interface, KSZ8851_REG_RXQCR, RXQCR_SDA);
+
+      //The ints are disabled. During delivering the packet, enable ints again
+      Enable();
 
       //Pass the packet to the upper layer
       if (interface->onPacketReceived) {
-         //jump over the first 2 dummy bytes of the packet //TODO:
-         interface->onPacketReceived(context->rxBuffer+2, rxPktLength-2);
+         //deliver only the Ethernet frame (offset +2) and payload without trailing checksum (len -4)
+         interface->onPacketReceived(context->rxBuffer+2, rxPktLength - 2 - 4);
       }
+
+      //Disable Ints again for the rest of reading packets...
+      Disable();
 
       //Valid packet received
       return NO_ERROR;
@@ -1056,16 +1115,3 @@ void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length) {
  extern NetInterface * initModule() {
     return &driverInterface;
  }
-
-
-
- // ------------------ Entry points from old device --------------------------------------------------------
-
- bool hal_serviceReadPackets (APTR device,APTR a) {
-    return TRUE;
- }
-
- bool hal_serviceWritePackets(APTR a,APTR b) {
-    return TRUE;
- }
-

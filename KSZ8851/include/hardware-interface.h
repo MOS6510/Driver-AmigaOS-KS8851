@@ -31,7 +31,7 @@
 
 #define STACK_SIZE_MINIMUM 5000
 
-#ifdef DEBUG
+#if DEBUG > 0
 extern void traceout(char * format, ...);
 #define TRACE_INFO traceout
 #define TRACE_DEBUG traceout

@@ -13,8 +13,15 @@
 //Amiga Color register 0
 #define COLORREG00 *((uint16_t*)0xdff180)
 
+#if DEBUG > 0
+#define SetBackgroundColor(x) COLORREG00 = x
+#else
+#define SetBackgroundColor(x)
+#endif
+
+
 // The priority of our AmigaOS interrupt server handler
-#define INTERRUPT_SERVER_PRIOIRY 121
+#define INTERRUPT_SERVER_PRIOIRY 0 //121
 
  /*
   * The interrupt service routine ("Amiga Interrupt Server handler")
@@ -23,10 +30,17 @@
  {
     Ksz8851Context * context = (Ksz8851Context*)interface->nicContext;
 
-    //Call the handler. Check if the interrupt was from our hardware...
-    if ((0 == context->intDisabledCounter) && ksz8851IrqHandler(interface)) {
-       COLORREG00 = 0xa;
+    //Is ISR handling enabled?
+    if (0 != context->intDisabledCounter) {
+       //ISR is disabled, DO NOT TOUCH ANY NIC REGISTERS!
+       SetBackgroundColor(2);
+       //=> We can't be the source of the interrupt request!
+       return (uint8_t)0;
+    }
 
+    //Call the handler. Check if the interrupt was from our hardware...
+    if (ksz8851IrqHandler(interface)) {
+       SetBackgroundColor(0xa);
        //Signal the service task
        Signal(context->signalTask, (1 << context->sigNumber));
        context->signalCounter++;

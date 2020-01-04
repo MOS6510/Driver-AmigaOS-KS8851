@@ -78,6 +78,7 @@ static void  AbortReqList(struct MinList *minlist,struct DeviceDriver * EtherDev
 static BOOL  ReadConfig(struct DeviceDriver *,  const char * sConfigFile);
 static void DevProcEntry(void);
 static BOOL checkStackSpace(int minStackSize);
+void printEthernetAddress(unsigned char * addr);
 
 //############################### CONST #######################################
 
@@ -142,7 +143,7 @@ VOID DevCmdGetSpecialStats(STDETHERARGS);
 VOID DevCmdNSDeviceQuery(STDETHERARGS);
 
 static void dumpMem(uint8_t * mem, int16_t len);
-static bool serviceWritePackets(struct DeviceDriverUnit *etherUnit, struct DeviceDriver *etherDevice);
+static void sendAllPackets(struct DeviceDriverUnit *etherUnit, struct DeviceDriver *etherDevice);
 
 //############ Externe Variablen und Funktionen ################################
 
@@ -928,7 +929,6 @@ SAVEDS void DevProcEntry(void)
     struct StartupMessage *startupMessage;
     struct IOSana2Req *ios2;
     ULONG receivedSignals;
-    BYTE msgPortSignalBit;
     BYTE configFileNotifySigBit;
     struct NotifyRequest configNotify = {0};
 
@@ -946,21 +946,21 @@ SAVEDS void DevProcEntry(void)
     etherUnit    = (struct DeviceDriverUnit *)startupMessage->Unit;
 
     /* Attempt to allocate a signal bit for our Unit MsgPort. */
-    msgPortSignalBit = AllocSignal(-1L);
-    if(msgPortSignalBit != -1)
-    {
-        /* Set up our Unit's MsgPort. */
-        etherUnit->eu_Unit.unit_MsgPort.mp_SigBit  = msgPortSignalBit;
-        etherUnit->eu_Unit.unit_MsgPort.mp_SigTask = (struct Task *)proc;
-        etherUnit->eu_Unit.unit_MsgPort.mp_Flags   = PA_SIGNAL;
 
-        /* Initialize our Transmit Request lists. Because it's a Message port
-         * Forbid and Permit is used. */
-        etherUnit->eu_Tx = CreateMsgPort();
- 
-        /* alles in Ordnung */
-        etherUnit->eu_Proc = proc;
-    }    
+    /* Set up our Unit's MsgPort. */
+    etherUnit->eu_Unit.unit_MsgPort.mp_SigBit  = AllocSignal(-1L);
+    etherUnit->eu_Unit.unit_MsgPort.mp_SigTask = (struct Task *)proc;
+    etherUnit->eu_Unit.unit_MsgPort.mp_Flags   = PA_SIGNAL;
+
+    /* Initialize our Transmit Request lists. Because it's a Message port
+     * Forbid and Permit is used for locks. */
+    etherUnit->eu_Tx = CreateMsgPort();
+    etherUnit->eu_Tx->mp_SigBit  = AllocSignal(-1L);
+    etherUnit->eu_Tx->mp_SigTask = (struct Task *)proc;
+    etherUnit->eu_Tx->mp_Flags   = PA_SIGNAL;
+
+    /* alles in Ordnung */
+    etherUnit->eu_Proc = proc;
 
     /* Reply to our startup message */
     ReplyMsg((struct Message *)startupMessage);    
@@ -968,13 +968,12 @@ SAVEDS void DevProcEntry(void)
     /* Check etherUnit->eu_Proc to see if everything went okay up
        above. */
     if(etherUnit->eu_Proc)    
-    {    
-        int servLoopCounter;
+    {
         NetInterface * lowLevelDriver = initModule();
         const char * sConfigFile = lowLevelDriver->getConfigFileName();
     
         // Init DOS Notify for etherbridge.config file
-        configFileNotifySigBit = AllocSignal(-1);
+        configFileNotifySigBit                       = AllocSignal(-1);
         configNotify.nr_Name                         = (char*)sConfigFile;
         configNotify.nr_Flags                        = NRF_SEND_SIGNAL;
         configNotify.nr_stuff.nr_Signal.nr_Task      = &etherUnit->eu_Proc->pr_Task;
@@ -987,7 +986,6 @@ SAVEDS void DevProcEntry(void)
         {
             //Waiting for any signal:
             receivedSignals = Wait(0xffffffff);
-            DEBUGOUT((VERBOSE_DEVICE,"Unit Process: Process signal 0x%lx...\n", receivedSignals));
 
             /* Have we been signaled to shut down? */
             if (receivedSignals & SIGBREAKF_CTRL_F) {
@@ -997,17 +995,20 @@ SAVEDS void DevProcEntry(void)
          
             //lowlevel hardware activity?
             if (receivedSignals & (1l << etherUnit->eu_lowLevelDriverSignalNumber)) {
-               servLoopCounter = 0;
-               while(((etherUnit->eu_State & ETHERUF_ONLINE) && (servLoopCounter++ < 100)) &&
-                     (etherUnit->eu_lowLevelDriver->processEvents(etherUnit->eu_lowLevelDriver)))
-               {
-                  //Serve while looping. Nothing.
-               };
+               DEBUGOUT((VERBOSE_DEVICE,"Device Unit Process: process low level event.\n"));
+               etherUnit->eu_lowLevelDriver->processEvents(etherUnit->eu_lowLevelDriver);
             }
 
-            // Activity of new IORequests? (mainly "writepacket")
-            if ((receivedSignals & (1l << msgPortSignalBit)))
+            //New packets to send?
+            if (receivedSignals & (1l << etherUnit->eu_Tx->mp_SigBit)) {
+               DEBUGOUT((VERBOSE_DEVICE,"Device Unit Process: Processing TX packets.\n"));
+               sendAllPackets(etherUnit,globEtherDevice);
+            }
+
+            //perform IORequest that should be done by the uni process...
+            if ((receivedSignals & (1l << etherUnit->eu_Unit.unit_MsgPort.mp_SigBit)))
             {
+               DEBUGOUT((VERBOSE_DEVICE,"Device Unit Process: Processing new IORequests.\n"));
                while ((ios2 = (void *) GetMsg((void *) etherUnit)) != NULL)
                {
                   PerformIO(ios2, globEtherDevice);
@@ -1015,26 +1016,33 @@ SAVEDS void DevProcEntry(void)
             }
 
             // Configuration file changed?
-            if (receivedSignals & (1L<<configFileNotifySigBit))
+            if (receivedSignals & (1L << configFileNotifySigBit))
             {
-                ReadConfig(globEtherDevice, lowLevelDriver->getConfigFileName());
+               DEBUGOUT((VERBOSE_DEVICE,"Device Unit Process: Config file changed.\n"));
+               ReadConfig(globEtherDevice, lowLevelDriver->getConfigFileName());
             }
-
-            //Service send packets if needed...
-            serviceWritePackets(etherUnit,globEtherDevice);
          }
 
          DEBUGOUT((VERBOSE_DEVICE,"Unit Process: Leaving service loop...\n"));
 
+         //Set driver offline (TODO: event needed?)
+         etherUnit->eu_State &= ~ETHERUF_ONLINE;
+
          //stops access to the hardware in any way...
          etherUnit->eu_lowLevelDriver->deinit(etherUnit->eu_lowLevelDriver);
+
+         //Free signal bit from TX packets
+         if (etherUnit->eu_Tx->mp_SigBit != -1) {
+            FreeSignal( etherUnit->eu_Tx->mp_SigBit );
+            etherUnit->eu_Tx->mp_SigBit = -1;
+         }
 
          // Stop notification the config file
          EndNotify(&configNotify);
          bzero(&configNotify, sizeof (configNotify));
 
-         FreeSignal(msgPortSignalBit);
-         msgPortSignalBit = -1;
+         FreeSignal(etherUnit->eu_Unit.unit_MsgPort.mp_SigBit);
+         etherUnit->eu_Unit.unit_MsgPort.mp_SigBit = -1;
          FreeSignal(configFileNotifySigBit);
          configFileNotifySigBit = -1;
 
@@ -1048,10 +1056,10 @@ SAVEDS void DevProcEntry(void)
     else
     {
         /* Something went wrong in the init code.  Drop out. */
-        if(msgPortSignalBit != -1)
+        if(etherUnit->eu_Unit.unit_MsgPort.mp_SigBit != -1)
         {
-           FreeSignal(msgPortSignalBit);
-           msgPortSignalBit = -1;
+           FreeSignal(etherUnit->eu_Unit.unit_MsgPort.mp_SigBit);
+           etherUnit->eu_Unit.unit_MsgPort.mp_SigBit = -1;
         }
     } 
 }
@@ -1081,12 +1089,12 @@ void DeviceBeginIO(struct IOSana2Req * ios2,
    register UWORD Cmd = ios2->ios2_Req.io_Command;
    if(((1L << Cmd) & PERFORM_NOW) || (Cmd >= NSCMD_DEVICEQUERY) )
    {
-      //Processed now!
+      //Processed request now!
       PerformIO(ios2,globEtherDevice);
    }
    else
    {
-      //Processed later by the unit process...
+      //Let IOrequest process by the unit process...
       ios2->ios2_Req.io_Message.mn_Node.ln_Type = NT_MESSAGE;
       ios2->ios2_Req.io_Flags &= ~IOF_QUICK;
       PutMsg((void *)ios2->ios2_Req.io_Unit,(void *)ios2);
@@ -1266,10 +1274,8 @@ VOID DevCmdWritePacket(STDETHERARGS)
         {
             /* Queue the Write Request for the unit process. */
             ios2->ios2_Req.io_Flags &= ~IOF_QUICK;
-            Forbid();
             ios2->ios2_Req.io_Message.mn_Node.ln_Type = NT_MESSAGE;
             PutMsg((APTR)etherUnit->eu_Tx,(APTR)ios2);
-            Permit();
         }
         else
         {
@@ -1334,7 +1340,7 @@ BOOL fulfillReadIORequest( struct DeviceDriver * etherDevice,
          // RAW:
          //
 
-         //Respect MTU...
+         //Respect MTU 1500 + Ethernet Header
          if (rawPacketLength > 1514) {
             rawPacketLength = 1514;
          }
@@ -2102,7 +2108,9 @@ VOID DevCmdNSDeviceQuery(STDETHERARGS)
     TermIO(ios2,globEtherDevice);
 }
 
+//Temp buffer to send packets which are "cooked" type...
 static uint8_t sendBuffer[2000];
+
 
 /**
  * Writing Packets. Check if packets should be send out.
@@ -2112,16 +2120,15 @@ static uint8_t sendBuffer[2000];
  * @param etherDevice
  * @return ...
  */
-static bool serviceWritePackets(struct DeviceDriverUnit *etherUnit, struct DeviceDriver *etherDevice) {
+static void sendAllPackets(struct DeviceDriverUnit *etherUnit, struct DeviceDriver *etherDevice) {
 
    struct IOSana2Req *ios2;
    struct BufferManagement *bm;
-   short pad;
 
    DEBUGOUT((VERBOSE_HW, "serviceWritePackets():\n"));
 
-   /* Packets for sending available? */
-   while ((ios2 = safeGetNextWriteRequest(etherUnit)) != NULL) {
+   // Send all packets which are in queue...
+   while ((ios2 = (struct IOSana2Req *)GetMsg((APTR)etherUnit->eu_Tx)) != NULL) {
 
       bm = (struct BufferManagement *) ios2->ios2_BufferManagement;
       if (!bm || !bm->bm_CopyFromBuffer) {
@@ -2129,13 +2136,14 @@ static bool serviceWritePackets(struct DeviceDriverUnit *etherUnit, struct Devic
          goto end;
       }
 
+      //Raw or Cooked packet?
       if (ios2->ios2_Req.io_Flags & SANA2IOF_RAW) {
          //
          // RAW:
          //
          TRACE_INFO("  Send raw packet:\n");
 
-         if (ios2->ios2_DataLength > 14) {
+         if (ios2->ios2_DataLength > ETHER_PACKET_HEAD_SIZE) {
             if (CopyFromBuffer((ULONG)sendBuffer, (ULONG)(ios2->ios2_Data), ios2->ios2_DataLength)) {
                dumpMem(sendBuffer, ios2->ios2_DataLength);
                etherUnit->eu_lowLevelDriver->sendPacket(etherUnit->eu_lowLevelDriver, sendBuffer, ios2->ios2_DataLength);
@@ -2152,27 +2160,28 @@ static bool serviceWritePackets(struct DeviceDriverUnit *etherUnit, struct Devic
          //
          if (ios2->ios2_DataLength <= ETHERNET_MTU) {
 
-            pad = 0;
+            DEBUGOUT((VERBOSE_HW, "  Send cooked packet:\n"));
+
             if (ios2->ios2_DataLength < 46) {
-               pad = 46 - ios2->ios2_DataLength;
+               DEBUGOUT((VERBOSE_HW, "  (pkt too small. Will be padded (%ld bytes)\n", ios2->ios2_DataLength));
             }
 
-            //Build Ethernet packet SRC + DST + Type:
-            copyEthernetAddress(ios2->ios2_DstAddr, sendBuffer+0);
+            //Build Ethernet packet (with temp buffer): SRC + DST + Type:
+            copyEthernetAddress(ios2->ios2_DstAddr,   sendBuffer+0);
             copyEthernetAddress(etherUnit->eu_StAddr, sendBuffer+6);
             *(uint16_t*)(sendBuffer+12) = ios2->ios2_PacketType;
 
-            DEBUGOUT((VERBOSE_HW, "  Send cooked packet:\n"));
-            DEBUGOUT((VERBOSE_HW, "    from (ios2_Data): 0x%lx\n", ios2->ios2_Data));
-            DEBUGOUT((VERBOSE_HW, "    len             : %ld\n", (ULONG) ios2->ios2_DataLength));
-            DEBUGOUT((VERBOSE_HW, "    + padding       : %ld\n", (ULONG)pad));
-            DEBUGOUT((VERBOSE_HW, "    type            : 0x%lx\n", (ULONG)ios2->ios2_PacketType));
             DEBUGOUT((VERBOSE_HW, "    Dst MAC         : ")); printEthernetAddress(sendBuffer+0); DEBUGOUT((VERBOSE_HW,"\n"));
             DEBUGOUT((VERBOSE_HW, "    Src MAC         : ")); printEthernetAddress(sendBuffer+6); DEBUGOUT((VERBOSE_HW,"\n"));
+            DEBUGOUT((VERBOSE_HW, "    type            : 0x%lx\n", (ULONG)ios2->ios2_PacketType));
+            DEBUGOUT((VERBOSE_HW, "    len             : %ld\n",   (ULONG) ios2->ios2_DataLength));
 
-            //Add payload:
+            //Get packet data from request as payload (offset +ETHER_PACKET_HEAD_SIZE):
             if (CopyFromBuffer((ULONG )(sendBuffer + ETHER_PACKET_HEAD_SIZE), (ULONG )ios2->ios2_Data, ios2->ios2_DataLength)) {
-               int len = ios2->ios2_DataLength + ETHER_PACKET_HEAD_SIZE + pad;
+               //respect minimal size of 46 bytes Ethernet Frame
+               int len = (ios2->ios2_DataLength < 46) ? 46 : ios2->ios2_DataLength;
+               len += ETHER_PACKET_HEAD_SIZE;
+               //Send packet:
                dumpMem(sendBuffer, len);
                etherUnit->eu_lowLevelDriver->sendPacket(etherUnit->eu_lowLevelDriver, sendBuffer, len);
 
@@ -2190,11 +2199,7 @@ static bool serviceWritePackets(struct DeviceDriverUnit *etherUnit, struct Devic
          DoEvent(S2EVENT_BUFF, etherUnit, etherDevice);
       }
       TermIO(ios2, etherDevice);
-      return TRUE;
    }
-
-   //Nothing to be done...
-   return FALSE;
 }
 
 /**
@@ -2230,13 +2235,15 @@ static void dumpMem(uint8_t * mem, int16_t len) {
  }
 
 
-#if DEBUG > 0
+
 void printEthernetAddress(unsigned char * addr)
 {
+#if DEBUG > 0
    DEBUGOUT((VERBOSE_HW, "%02lx:%02lx:%02lx:%02lx:%02lx:%02lx",
          (ULONG)addr[0],  (ULONG)addr[1],  (ULONG)addr[2],  (ULONG)addr[3],  (ULONG)addr[4],  (ULONG)addr[5] ));
-}
 #endif
+}
+
 
 BOOL isBroadcastEthernetAddress(UBYTE * addr)
 {
@@ -2267,18 +2274,3 @@ void setErrorOnRequest(struct IOSana2Req *ios2, BYTE io_Error, ULONG ios2_WireEr
    ios2->ios2_WireError = ios2_WireError;
    ios2->ios2_Req.io_Error = io_Error;
 }
-
-/**
- * Tries to retrieve next Write packet. returns NULL if no packets to be send.
- * @param etherUnit etherunit
- * @return next write packet or NULL
- */
-struct IOSana2Req * safeGetNextWriteRequest(struct DeviceDriverUnit * etherUnit)
-{
-   Forbid();
-   struct IOSana2Req * req = (struct IOSana2Req *)GetMsg((APTR)etherUnit->eu_Tx);
-   Permit();
-   return req;
-}
-
-

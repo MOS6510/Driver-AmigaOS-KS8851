@@ -10,11 +10,11 @@
 //The device versions and the device build time...
 #define DEVICE_VERSION  1
 #define DEVICE_REVISION 0
-#define DEVICE_BUILD    1
+#define DEVICE_BUILD    2
 
 //It seems that the date should be in format (dd Mmm yyyy).
 //Only than AmigaOS (3.x) version command can extract it.
-#define DEVICE_VERSION_DATE "(27 Dec 2019)"
+#define DEVICE_VERSION_DATE "(04 Jan 2020)"
 
 // ---------------------- Do not change anything behind that line -------------------------------------------
 
