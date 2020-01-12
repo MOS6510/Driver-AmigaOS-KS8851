@@ -51,6 +51,7 @@ uint16_t swap(uint16_t);
 #define memPoolFree(a) FreeVec(a)
 
 #define ETH_MAX_FRAME_SIZE 1518
+#define ETH_HEADER_SIZE 14
 
  // -------------
 
@@ -480,6 +481,7 @@ uint16_t swap(uint16_t);
  uint16_t ksz8851ReadReg(NetInterface *interface, uint8_t address);
  uint8_t ksz8851ReadReg8(NetInterface * ks, uint8_t offset);
  void ksz8851WriteFifo(NetInterface *interface, const uint8_t *data, size_t length);
+ uint16_t ksz8851WriteFifoWordAlign(register NetInterface *interface, register const uint8_t *data, register size_t lengthInBytes);
  void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length);
  void ksz8851SetBit(NetInterface *interface, uint8_t address, uint16_t mask);
  void ksz8851ClearBit(NetInterface *interface, uint8_t address, uint16_t mask);

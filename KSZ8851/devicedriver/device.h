@@ -145,6 +145,8 @@ struct BufferManagement
     struct MinNode         bm_Node;
     SANA2_CFB              bm_CopyFromBuffer;
     SANA2_CTB              bm_CopyToBuffer;
+    APTR                   bm_CopyFromBufferDMA;
+    APTR                   bm_CopyToBufferDMA;
     struct Hook          *  bm_PacketFilterHook;   // SANA-II V2 Callback Hook
     struct MinList          bm_RxQueue;            // Pending CMD_READ Requests
     struct SignalSemaphore  bm_RxQueueLock;        // Lock for this bm_RxQueue

@@ -27,6 +27,7 @@
 
 #include "helper.h"
 
+#include "copybuffs.h"
 
 /**
  * Main copy buffer management function. Used for both: CopyToBuf and CopyFromBuf calls
@@ -38,11 +39,11 @@
  * @return
  */
 SAVEDS
-ULONG CopyBuf(APTR funcPtr, ULONG to, ULONG from, ULONG len) {
+ULONG CopyBuf(APTR funcPtr, APTR to, APTR from, ULONG len) {
    register ULONG _res __asm("d0");
-   register APTR a2  __asm("a2") = funcPtr;
-   register ULONG a1 __asm("a1") = from;
-   register ULONG a0 __asm("a0") = to;
+   register APTR  a2 __asm("a2") = funcPtr;
+   register APTR  a1 __asm("a1") = from;
+   register APTR  a0 __asm("a0") = to;
    register ULONG d0 __asm("d0") = len;
 
    //TODO: I'm not sure if register save is needed here
@@ -86,4 +87,29 @@ ULONG CallFilterHook(struct Hook * hook, struct IOSana2Req * ioreq, APTR rawPktD
 
    return _res;
 }
+
+
+/**
+ * Call the S2_DMACopyFromBuffer function of the TCP Stack.
+ *
+ * @param REG(a1, APTR funcPtr)
+ * @param REG(a0, APTR io_data_buffer)
+ * @return
+ */
+SAVEDS
+APTR CopyFromOrToBufferDMA( REG(a1, APTR funcPtr), REG(a0, APTR io_data_buffer) ) {
+      register APTR _res __asm("d0");
+
+      //The function must be called with io_data in A0 register...
+
+      //TODO: Do I need to backup the registers?
+      //__asm volatile ("movem.l  d1-d7/a2-a6,-(a7)");
+      __asm __volatile ("jsr a1@"
+            : "=r" (_res)
+            : "r" (funcPtr), "r" (io_data_buffer)
+            : "memory");
+      //__asm volatile ("movem.l  (a7)+,d1-d7/a2-a6");
+      return _res;
+}
+
 

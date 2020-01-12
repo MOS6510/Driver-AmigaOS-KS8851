@@ -89,6 +89,8 @@ typedef struct _NetInterface {
 
    bool (*processEvents)(struct _NetInterface *);
    error_t (*sendPacket)(struct _NetInterface *, uint8_t * buffer, size_t length);
+   error_t (*sendPacketCooked)(struct _NetInterface *, MacAddr * dst, MacAddr * src, uint16_t packetType, uint8_t * buffer, size_t length);
+
    bool (*sendPacketPossible)(struct _NetInterface *, uint16_t size);
    void (*getDefaultNetworkAddress)(struct _NetInterface *, MacAddr *);
 

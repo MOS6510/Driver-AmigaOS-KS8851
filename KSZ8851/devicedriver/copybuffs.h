@@ -12,6 +12,10 @@
 #include <devices/sana2.h>
 #include "helper.h"
 
+#if !defined(REG)
+#define REG(reg,arg) arg __asm(#reg)
+#endif
+
 /*
 ** Typedef's for the SANA-II callback functions.
 */
@@ -22,7 +26,6 @@ typedef ULONG (*HOOK_FUNC)(struct Hook *hook,struct IOSana2Req * io,APTR message
 #define CopyFromBuffer(to,from,len)      CopyBuf(bm->bm_CopyFromBuffer  ,to,from,len)
 #define CopyToBuffer(to,from,len)        CopyBuf(bm->bm_CopyToBuffer    ,to,from,len)
 
-
 /**
  * Main Copy Buffer function.
  * @param funcPtr
@@ -31,7 +34,7 @@ typedef ULONG (*HOOK_FUNC)(struct Hook *hook,struct IOSana2Req * io,APTR message
  * @param len
  * @return
  */
-SAVEDS ULONG CopyBuf(APTR funcPtr, ULONG to, ULONG from, ULONG len);
+SAVEDS ULONG CopyBuf(APTR funcPtr, APTR to, APTR from, ULONG len);
 
 /**
  * Main filter function
@@ -41,5 +44,15 @@ SAVEDS ULONG CopyBuf(APTR funcPtr, ULONG to, ULONG from, ULONG len);
  * @return
  */
 SAVEDS ULONG CallFilterHook(struct Hook * hook, struct IOSana2Req * ioreq, APTR rawPktData);
+
+
+/**
+ * SANA2 V3 extension: DMA copy
+ */
+
+//V3 extension DMA:
+#define CopyFromBufferDMA(io_data)      CopyFromOrToBufferDMA(bm->bm_CopyFromBufferDMA, io_data)
+#define CopyToBufferDMA(io_data)        CopyFromOrToBufferDMA(bm->bm_CopyToBufferDMA,   io_data)
+SAVEDS APTR CopyFromOrToBufferDMA( REG(a1, APTR funcPtr), REG(a0, APTR io_data_buffer) );
 
 #endif

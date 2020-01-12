@@ -341,13 +341,13 @@ void DeviceOpen(struct IOSana2Req *ios2,
 
                   bufftag = FindTagItem(S2_DMACopyFromBuff32, tagItem);
                   if (bufftag) {
-                     //TODO:
+                     bm->bm_CopyFromBufferDMA = (SANA2_CFB) bufftag->ti_Data;
                      print(5, "  S2_DMACopyFromBuff32-Tag found...\n");
                   }
 
                   bufftag = FindTagItem(S2_DMACopyToBuff32, tagItem);
                   if (bufftag) {
-                     //TODO:
+                     bm->bm_CopyToBufferDMA = (SANA2_CFB) bufftag->ti_Data;
                      print(5, "  S2_DMACopyToBuff32-Tag found...\n");
                   }
 
@@ -1374,7 +1374,7 @@ BOOL fulfillReadIORequest( struct DeviceDriver * etherDevice,
       if(CallFilterHook(bm->bm_PacketFilterHook, ios2, pktDataForIORequest))
       {
          //DEBUGOUT((VERBOSE_HW,"  Filter hook passed. Result: Not skipped.\n"));
-         if(CopyToBuffer((ULONG)ios2->ios2_Data,(ULONG)pktDataForIORequest, rawPacketLength ))
+         if(CopyToBuffer((APTR)ios2->ios2_Data,(APTR)pktDataForIORequest, rawPacketLength ))
          {
             DEBUGOUT((VERBOSE_HW,"Pkt copied successfully:\n"));
             dumpMem(pktDataForIORequest,rawPacketLength);
@@ -2111,7 +2111,7 @@ VOID DevCmdNSDeviceQuery(STDETHERARGS)
     TermIO(ios2,globEtherDevice);
 }
 
-//Temp buffer to send packets which are "cooked" type...
+//Temp buffer to send packets which are of type "cooked" only...
 static uint8_t sendBuffer[2000];
 
 
@@ -2134,10 +2134,9 @@ static void sendAllPackets(struct DeviceDriverUnit *etherUnit, struct DeviceDriv
    while ((ios2 = (struct IOSana2Req *)GetMsg((APTR)etherUnit->eu_Tx)) != NULL) {
 
       bm = (struct BufferManagement *) ios2->ios2_BufferManagement;
-      if (!bm || !bm->bm_CopyFromBuffer) {
-         setErrorOnRequest(ios2, S2ERR_NO_RESOURCES, S2WERR_BUFF_ERROR);
-         goto end;
-      }
+
+      //Check if the stack tells us it's packet buffer (SANA2 V3 extension)
+      APTR dmaPacketBuffer = (bm->bm_CopyFromBufferDMA != 0l) ? CopyFromBufferDMA(ios2->ios2_Data) : NULL;
 
       //Raw or Cooked packet?
       if (ios2->ios2_Req.io_Flags & SANA2IOF_RAW) {
@@ -2147,7 +2146,7 @@ static void sendAllPackets(struct DeviceDriverUnit *etherUnit, struct DeviceDriv
          TRACE_INFO("  Send raw packet:\n");
 
          if (ios2->ios2_DataLength > ETHER_PACKET_HEAD_SIZE) {
-            if (CopyFromBuffer((ULONG)sendBuffer, (ULONG)(ios2->ios2_Data), ios2->ios2_DataLength)) {
+            if (CopyFromBuffer((APTR)sendBuffer,ios2->ios2_Data, ios2->ios2_DataLength)) {
                dumpMem(sendBuffer, ios2->ios2_DataLength);
                etherUnit->eu_lowLevelDriver->sendPacket(etherUnit->eu_lowLevelDriver, sendBuffer, ios2->ios2_DataLength);
             } else {
@@ -2164,40 +2163,69 @@ static void sendAllPackets(struct DeviceDriverUnit *etherUnit, struct DeviceDriv
          if (ios2->ios2_DataLength <= ETHERNET_MTU) {
 
             DEBUGOUT((VERBOSE_HW, "  Send cooked packet:\n"));
-
+            DEBUGOUT((VERBOSE_HW, "    NetIORequest    : 0x%lx\n", ios2));
             if (ios2->ios2_DataLength < 46) {
-               DEBUGOUT((VERBOSE_HW, "  (pkt too small. Will be padded (%ld bytes)\n", ios2->ios2_DataLength));
+               DEBUGOUT((VERBOSE_HW, "      Pkt < 46 bytes payload (%ld bytes)\n", ios2->ios2_DataLength));
             }
+            DEBUGOUT((VERBOSE_HW, "      DstAddr         : ")); printEthernetAddress(ios2->ios2_DstAddr);   DEBUGOUT((VERBOSE_HW,"\n"));
+            DEBUGOUT((VERBOSE_HW, "      SrcAddr         : ")); printEthernetAddress(etherUnit->eu_StAddr); DEBUGOUT((VERBOSE_HW,"\n"));
+            DEBUGOUT((VERBOSE_HW, "      PacketType      : 0x%lx\n", (ULONG)ios2->ios2_PacketType));
+            DEBUGOUT((VERBOSE_HW, "      DataLength      : 0x%lx\n", (ULONG)ios2->ios2_DataLength));
+            DEBUGOUT((VERBOSE_HW, "      DMABufferPtr    : 0x%lx\n", (ULONG)dmaPacketBuffer));
 
-            //Build Ethernet packet (with temp buffer): SRC + DST + Type:
-            copyEthernetAddress(ios2->ios2_DstAddr,   sendBuffer+0);
-            copyEthernetAddress(etherUnit->eu_StAddr, sendBuffer+6);
-            *(uint16_t*)(sendBuffer+12) = ios2->ios2_PacketType;
+            //Test: Stop using DMA!!!!
+            //dmaPacketBuffer = NULL;
 
-            DEBUGOUT((VERBOSE_HW, "    Dst MAC         : ")); printEthernetAddress(sendBuffer+0); DEBUGOUT((VERBOSE_HW,"\n"));
-            DEBUGOUT((VERBOSE_HW, "    Src MAC         : ")); printEthernetAddress(sendBuffer+6); DEBUGOUT((VERBOSE_HW,"\n"));
-            DEBUGOUT((VERBOSE_HW, "    type            : 0x%lx\n", (ULONG)ios2->ios2_PacketType));
-            DEBUGOUT((VERBOSE_HW, "    len             : %ld\n",   (ULONG) ios2->ios2_DataLength));
-
-            //Get packet data from request as payload (offset +ETHER_PACKET_HEAD_SIZE):
-            if (CopyFromBuffer((ULONG )(sendBuffer + ETHER_PACKET_HEAD_SIZE), (ULONG )ios2->ios2_Data, ios2->ios2_DataLength)) {
-               //respect minimal size of 46 bytes Ethernet Frame
-               int len = (ios2->ios2_DataLength < 46) ? 46 : ios2->ios2_DataLength;
-               len += ETHER_PACKET_HEAD_SIZE;
-               //Send packet:
-               dumpMem(sendBuffer, len);
-               etherUnit->eu_lowLevelDriver->sendPacket(etherUnit->eu_lowLevelDriver, sendBuffer, len);
+            if (dmaPacketBuffer) {
+               //Yes, use SANA2 V3 extension: Direct copy without any second buffer...
+               dumpMem(dmaPacketBuffer, ios2->ios2_DataLength);
+               etherUnit->eu_lowLevelDriver->sendPacketCooked(etherUnit->eu_lowLevelDriver,
+                     (MacAddr*)ios2->ios2_DstAddr,
+                     (MacAddr*)etherUnit->eu_StAddr,
+                     (uint16_t)ios2->ios2_PacketType,
+                     dmaPacketBuffer,
+                     ios2->ios2_DataLength);
 
             } else {
-               setErrorOnRequest(ios2, S2ERR_NO_RESOURCES, S2WERR_BUFF_ERROR);
-               DEBUGOUT((VERBOSE_HW, "   CopyFromBuffer error\n"));
+               //No, go ahead with old V2 copy functions (let stack copy the data)
+
+               //Build a raw ethernet packet (with a temp buffer): SRC + DST + Type:
+               copyEthernetAddress(ios2->ios2_DstAddr,   sendBuffer+0);
+               copyEthernetAddress(etherUnit->eu_StAddr, sendBuffer+6);
+               *(uint16_t*)(sendBuffer+12) = ios2->ios2_PacketType;
+
+               //copy packet data from request at offset ETHER_PACKET_HEAD_SIZE as the ethernet content:
+               if (CopyFromBuffer((APTR)(sendBuffer + ETHER_PACKET_HEAD_SIZE), ios2->ios2_Data, ios2->ios2_DataLength)) {
+
+                  /*
+                  //Send packet (old send method working):
+                  //respect minimal size of 46 bytes Ethernet Frame
+                  int len = (ios2->ios2_DataLength < 46) ? 46 : ios2->ios2_DataLength;
+                  len += ETHER_PACKET_HEAD_SIZE;
+                  dumpMem(sendBuffer, len);
+                  etherUnit->eu_lowLevelDriver->sendPacket(etherUnit->eu_lowLevelDriver, sendBuffer, len);
+                  */
+
+                  //New method:
+                  dumpMem(sendBuffer, ios2->ios2_DataLength + ETHER_PACKET_HEAD_SIZE);
+                  etherUnit->eu_lowLevelDriver->sendPacketCooked(etherUnit->eu_lowLevelDriver,
+                        (MacAddr*)(sendBuffer+0),
+                        (MacAddr*)(sendBuffer+6),
+                        *(uint16_t*)(sendBuffer+12),
+                        (sendBuffer+ETHER_PACKET_HEAD_SIZE),
+                        ios2->ios2_DataLength);
+
+               } else {
+                  setErrorOnRequest(ios2, S2ERR_NO_RESOURCES, S2WERR_BUFF_ERROR);
+                  DEBUGOUT((VERBOSE_HW, "   CopyFromBuffer error\n"));
+               }
             }
          } else {
             setErrorOnRequest(ios2, S2ERR_MTU_EXCEEDED, S2WERR_BUFF_ERROR);
             DEBUGOUT((VERBOSE_HW, "   Pkt exceeds the MTU!\n"));
          }
       }
-      end:
+      //end:
       if (ios2->ios2_WireError != 0) {
          DoEvent(S2EVENT_BUFF, etherUnit, etherDevice);
       }
@@ -2223,6 +2251,7 @@ BOOL checkStackSpace(int minStackSize)
 }
 
 static void dumpMem(uint8_t * mem, int16_t len) {
+#if DEBUG > 0
     int i;
     for (i = 0; i < len; i++) {
        if (((i % 16) == 0)) {
@@ -2235,6 +2264,7 @@ static void dumpMem(uint8_t * mem, int16_t len) {
        mem++;
     }
     TRACE_INFO("\n");
+#endif
  }
 
 

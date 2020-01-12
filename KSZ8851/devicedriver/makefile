@@ -49,8 +49,6 @@ addToAdf:
 	
 # Installs device on real Amiga via "Amiga Explorer"
 install:
-		#$(AMIGA_EXPLORER) -l || true
-		#@sleep 1
 		$(AMIGA_EXPLORER) -u DEVS:/networks/ksz8851.device || true
 		@sleep 2
 		$(AMIGA_EXPLORER) -s $(BUILDDIR)/$(DEVICE_NAME).$(ARCH) DEVS:/networks/ksz8851.device	

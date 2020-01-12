@@ -124,6 +124,23 @@ static error_t ksz8851DetectNICEndiness(NetInterface *interface) {
    return NO_ERROR;
 }
 
+static void dumpMem(uint8_t * mem, int16_t len) {
+#if DEBUG > 0
+    int i;
+    for (i = 0; i < len; i++) {
+       if (((i % 16) == 0)) {
+          if (i != 0) {
+             TRACE_INFO("\n");
+          }
+          TRACE_INFO("%03lx: ", (ULONG)i);
+       }
+       TRACE_INFO("%02lx ", *mem);
+       mem++;
+    }
+    TRACE_INFO("\n");
+#endif
+ }
+
 
  /**
   * @brief KSZ8851 controller initialization
@@ -501,8 +518,6 @@ error_t ksz8851Init(NetInterface *interface)
     return false;
  }
 
-
-
  /**
   * @brief Send a packet
   * @param[in] interface Underlying network interface
@@ -557,6 +572,96 @@ error_t ksz8851SendPacket(NetInterface *interface, uint8_t * buffer, size_t leng
     ksz8851WriteFifo(interface, buffer, length);
 
     //End TXQ write access
+    ksz8851ClearBit(interface, KSZ8851_REG_RXQCR, RXQCR_SDA);
+
+    //Start transmission
+    ksz8851SetBit(interface, KSZ8851_REG_TXQCR, TXQCR_METFE);
+
+    //Successful processing
+    result = NO_ERROR;
+
+end:
+
+   //Enable all NIC ints again...
+   //ksz8851EnableInterrupts(interface, oldIERMask);
+   Enable();
+
+   return result;
+}
+
+
+
+/**
+  * @brief Send a packet "cooked". Packet is separated into destination, source, packettype and payload.
+  * If packet is smaller than 46 bytes than bytes will be appended at the end.
+  *
+  * @param[in] interface Underlying network interface
+  * @param[in] buffer Multi-part buffer containing the data to send
+  * @param[in] offset Offset to the first data byte
+  * @return Error code
+  **/
+error_t ksz8851SendPacketCooked(struct _NetInterface * interface,
+      MacAddr * dst, MacAddr * src,
+      uint16_t packetType,
+      uint8_t * payload,
+      size_t payloadLength)
+{
+    Ksz8851TxHeader header;
+    error_t result = NO_ERROR;
+    size_t n;
+    Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
+
+    TRACE_DEBUG("ksz8851: Send packet (length=%ld, packetType=0x%lx):\n", payloadLength, packetType );
+    TRACE_DEBUG("         dst: "); dumpMem((APTR)dst, 6);
+    TRACE_DEBUG("         src: "); dumpMem((APTR)src, 6);
+    dumpMem(payload, payloadLength);
+
+    //Make the packet bigger when smaller than 46.
+    //TODO: this could cause an enforcer hit when the data is copied because we accessing memory outside the packet...
+    if (payloadLength < 46) {
+       payloadLength = 46;
+    }
+
+    //Need to exclusive access the NIC registers now, store old IER mask
+    //uint16_t oldIERMask = ksz8851DisableInterrupts(interface);
+    Disable();
+
+    //Get the amount of free memory available in the TX FIFO
+    n = ksz8851ReadReg(interface, KSZ8851_REG_TXMIR) & TXMIR_TXMA_MASK;
+
+    //Make sure enough memory is available
+    if((payloadLength + 8) > n) {
+       TRACE_INFO("ksz8851: Not enough space to send packet!!!!!\n");
+       result = ERROR_FAILURE;
+       goto end;
+    }
+
+    //The header structure always seems to be fixed little endian!
+    //Format control word
+    header.controlWord = swap(TX_CTRL_TXIC | (context->frameId++ & TX_CTRL_TXFID));
+    //Total number of bytes to be transmitted (adding the pads here)
+    header.byteCount   = swap(payloadLength + ETH_HEADER_SIZE);
+
+    //Enable TXQ write access (DMA)
+    ksz8851SetBit(interface, KSZ8851_REG_RXQCR, RXQCR_SDA);
+    {
+       //Write TX packet header (4 bytes)
+       ksz8851WriteFifoWordAlign(interface, (uint8_t *)&header, sizeof(Ksz8851TxHeader));
+       //Write "Ethernet Header" (14 bytes)
+       ksz8851WriteFifoWordAlign(interface, (uint8_t *)dst,         6);
+       ksz8851WriteFifoWordAlign(interface, (uint8_t *)src,         6);
+       ksz8851WriteFifoWordAlign(interface, (uint8_t *)&packetType, 2);
+
+       //Write ethernet payload data (maybe aligned to WORDs, added pads...)
+       int realSend = ksz8851WriteFifoWordAlign(interface, payload, payloadLength);
+       realSend += ETH_HEADER_SIZE; //add size of the ethernet head....
+
+       //Align DMA transfer to DWORD bound, send an additional WORD at the end if needed...
+       if (realSend & 0x03) {
+          KSZ8851_DATA_REG = 0;
+       }
+    }
+    //End TXQ write access (DMA ends)
     ksz8851ClearBit(interface, KSZ8851_REG_RXQCR, RXQCR_SDA);
 
     //Start transmission
@@ -878,29 +983,67 @@ end:
 #endif
 
  /**
+   * @brief Write TX FIFO without any DWORD alignment. You should know what you do! :-)
+   * @param[in] interface Underlying network interface
+   * @param[in] data Pointer to the data being written
+   * @param[in] length Number of data to write in WORDs
+   * @return[out] written bytes
+   **/
+ uint16_t ksz8851WriteFifoWordAlign(NetInterface *interface, const uint8_t *data, size_t lengthInBytes)
+  {
+     //register size_t i;
+     Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
+
+     //Align count to one "Word"
+     register uint16_t sizeInWord = (lengthInBytes + 1) >> 1;
+
+     if (context->isInBigEndianMode) {
+        //BE mode:
+        //copy in BE16 mode...which is faster because we do not swap bytes
+        register uint16_t * wordData = (uint16_t*)data;
+        while (sizeInWord--) {
+           KSZ8851_DATA_REG = *(wordData++);
+        }
+
+     } else {
+        //LE mode: (twisting)
+        register uint16_t val;
+        while (sizeInWord--) {
+           val = *(data++);
+           val |= ((*(data++)) << 8);
+           KSZ8851_DATA_REG = val;
+        }
+     }
+
+     //Return written bytes...
+     return (sizeInWord << 1) & ~0x01;
+  }
+
+ /**
   * @brief Write TX FIFO
   * @param[in] interface Underlying network interface
   * @param[in] data Pointer to the data being written
   * @param[in] length Number of data to write
   **/
-
  void ksz8851WriteFifo(register NetInterface *interface, register const uint8_t *data, register size_t length)
  {
     //register size_t i;
     Ksz8851Context *context = (Ksz8851Context *)interface->nicContext;
+
+    //Align the size to DWORDs...
     register uint16_t sizeInWord = ((length + 3) & ~0x03) >> 1;
 
 
     if (context->isInBigEndianMode) {
        //BE mode:
-       //copy in BE16 mode...which is faster because we do not mix the words
+       //copy in BE16 mode...no byte swapping for 68k processor
        register uint16_t * wordData = (uint16_t*)data;
        while (sizeInWord--) {
           KSZ8851_DATA_REG = *(wordData++);
        }
 
     } else {
-       //LE mode: (twisting)
+       //LE mode: (swapping bytes)
        register uint16_t val;
        while (sizeInWord--) {
           val = *(data++);
@@ -1109,6 +1252,7 @@ void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length) {
        .processEvents            = ksz8851EventHandler,
        .sendPacketPossible       = ksz8851SendPacketPossible,
        .sendPacket               = ksz8851SendPacket,
+       .sendPacketCooked         = ksz8851SendPacketCooked,
        .getDefaultNetworkAddress = ksz8851GetStationAddress,
        .getConfigFileName        = ksz8851GetConfigFileName,
        .nicContext = (Ksz8851Context*)&context,
