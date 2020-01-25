@@ -38,12 +38,13 @@
 #include "hardware-interface.h"
 
 
-//Number of device units supported
+//Number of supported device units of the driver
 #define ED_MAXUNITS 1
 
-//Prio of the device unit task
-#define ETHER_PRI 0
+//Priority of the device unit task
+#define UNIT_PROCESS_PRIORITY 0
 
+//Initialized Ethernet broadcast address
 extern const UBYTE BROADCAST_ADDRESS[6];
 
 // --------------------------------- MACROS -----------------------------------------------------------------
@@ -83,10 +84,11 @@ struct DeviceDriverUnit
     USHORT                 eu_Pad2;          /* Padding */
     ULONG                  eu_MTU;           /* Maximum Transmission Unit */
     ULONG                  eu_State;         /* Various state information */
-    struct Process       * eu_Proc;          /* NB: This points to the Task, not the MsgPort */
+    struct Process         *eu_Proc;         /* NB: This points to the Task, not the MsgPort */
 
     struct MsgPort         *eu_Tx;           /* Pending CMD_WRITE's for the Device Unit Process input.
-                                                There is no semaphore lock (MessagePort). Instead Forbid and Permit is used. */
+                                                There is no semaphore lock (MessagePort).
+                                                Instead Forbid and Permit is used. */
 
     struct MinList         eu_Events;        /* Pending S2_ONEVENT's: No Lock! Use Forbid() / Permit(). */
 
@@ -103,7 +105,7 @@ struct DeviceDriverUnit
     struct SuperS2PTStats* eu_IPTrack;       /* For tracking IP packets */
 
     NetInterface *         eu_lowLevelDriver; //Access to the low level hardware driver...
-    ULONG                  eu_lowLevelDriverSignalNumber; //The signal number used for low level signals...
+    ULONG                  eu_lowLevelDriverSignalNumber; //The signal number used for low level signaling...
 };
 
 
@@ -125,16 +127,13 @@ struct StartupMessage
 struct DeviceDriver
 {
    struct Library          ed_Device;              // Needed Device structure
-
    BPTR                    ed_SegList;             // Segment list when open device. Used when unload device.
-   struct DeviceDriverUnit *ed_Units[ED_MAXUNITS];  // Only "one" unit at this time
-   struct StartupMessage   ed_Startup;
-   struct Hook             ed_DummyPFHook;         // Default Dummy Hook (inkl. Asm-Funktion)
-   struct MinList          ed_MCAF;                // Liste der benutzten Multicastadressen
-   struct SignalSemaphore  ed_MCAF_Lock;           // Semaphore fuer MCAF-Liste
+   struct DeviceDriverUnit *ed_Units[ED_MAXUNITS]; // All units of the device (currently only one)
+   struct StartupMessage   ed_Startup;             //
+   struct Hook             ed_DummyPFHook;         // Default Dummy Hook (assembler function)
+   struct MinList          ed_MCAF;                // List of used multicast addresses
+   struct SignalSemaphore  ed_MCAF_Lock;           // Semaphore for MCAF list
    struct SignalSemaphore  ed_DeviceLock;          // General List Lock. Used only when open or close device
-
-   BOOL                    ed_showMessages;        // Showing messages allowed ?
 };
 
 /**
@@ -152,12 +151,12 @@ struct BufferManagement
     struct SignalSemaphore  bm_RxQueueLock;        // Lock for this bm_RxQueue
 };
 
-// Struktur zum merken der Multicastadressen
-struct MCAF_Adresse
+// Stores a used multicast address
+struct MCAF_Address
 {
     struct MinNode      MCAF_Node;
-    UBYTE               MCAF_Adr[6];
-    UBYTE               MCAF_Unit;
+    UBYTE               MCAF_Adr[6];               // Multicast MAC address
+    UBYTE               MCAF_Unit;                 // Count of using
 };
 
 // --------------------------------- PROTOTYPES -------------------------------------------------------------

@@ -13,7 +13,8 @@
 #include <proto/exec.h>
 #include <clib/debug_protos.h>
 
-int debugLevel = 0; //off: 0  on:1000
+//The debug level: off: 0  on:1000
+int debugLevel = 0;
 
 #if DEBUG > 0
 

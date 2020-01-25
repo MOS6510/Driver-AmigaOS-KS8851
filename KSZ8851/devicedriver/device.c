@@ -8,6 +8,8 @@
 
 // ############################## INCLUDES ####################################
 
+#include <string.h>
+
 #include "device.h"
 
 #include <proto/exec.h>
@@ -51,13 +53,10 @@
 
 #include <devices/NewStyleDev.h>
 
-#include <string.h>
-
 #include "configfile.h"
 #include "copybuffs.h"
 #include "devdebug.h"
 #include "helper.h"
-//#include "hwl/hal.h"
 #include "tools.h"
 #include "version.h"
 
@@ -71,7 +70,7 @@ const UBYTE BROADCAST_ADDRESS[6] = {0xff,0xff,0xff,0xff,0xff,0xff};
 
 static const char * DEVICE_TASK_NAME = DEVICE_NAME " unit task";
 
-// ############################## Prototypes ##################################
+// ############################## Local prototypes ############################
 
 static ULONG AbortRequestAndRemove(struct MinList *, struct IOSana2Req *,struct DeviceDriver *,struct SignalSemaphore * lock);
 static void  AbortReqList(struct MinList *minlist,struct DeviceDriver * EtherDevice);
@@ -105,7 +104,6 @@ const UWORD DevRevision = (UWORD)DEVICE_REVISION;
 
 const char DevName[]     = DEVICE_NAME;
 const char DevIdString[] = VERSION_STRING;
-//const char sConfigFile[] = DEFAULT_DEVICE_CONFIG_FILE;
 
 //############ Globale Variablen ###############################################
 
@@ -154,7 +152,7 @@ ULONG FakePFHookEntry(void)
 }
 
 /**
- * AmigaOS Device Init function. Called when the OS initializes/loads the device driver into memory.
+ * Device init function. Called when the OS initializes/loads the device driver into memory.
  *
  * @param DeviceSegList
  * @param DevBasePointer
@@ -188,9 +186,6 @@ struct Library * DeviceInit(BPTR DeviceSegList, struct Library * DevBasePointer,
    globEtherDevice->ed_Device.lib_IdString     = (char *)DevIdString;
    
    globEtherDevice->ed_SegList = DeviceSegList;
-
-   //Show user messages until config settings overrides it
-   globEtherDevice->ed_showMessages = true;
 
    //Create a dummy hook which do nothing...
    bzero(&globEtherDevice->ed_DummyPFHook, sizeof(globEtherDevice->ed_DummyPFHook));
@@ -368,7 +363,7 @@ void DeviceOpen(struct IOSana2Req *ios2,
                }
 
                /*
-                * Using dummy buffer management function when no callback are given.
+                * Using dummy buffer management function when no callbacks are given.
                 */
                if (!bm->bm_PacketFilterHook)
                   bm->bm_PacketFilterHook = &globEtherDevice->ed_DummyPFHook;
@@ -646,7 +641,7 @@ ULONG DeviceAbortIO( struct IOSana2Req *ios2, struct Library * DevPointer)
 
 /**
  * This function is used to locate an IO request in a linked
- * list and abort it if found. Request is removed from List.
+ * list and abort it if found. Request is removed from that list.
  *
  * @param minlist
  * @param ios2
@@ -695,7 +690,7 @@ ULONG AbortRequestAndRemove(struct MinList *minlist,
 }
 
 /**
- * Abort an list of requests...
+ * Abort an complete list of IO requests...
  *
  * @param minlist
  * @param EtherDevice
@@ -774,7 +769,7 @@ struct DeviceDriverUnit *InitUnitProcess(ULONG s2unit, struct DeviceDriver *Ethe
     struct DeviceDriverUnit *etherUnit;
     struct TagItem NPTags[]={{NP_Entry,      (ULONG)&DevProcEntry},
                              {NP_Name ,      (ULONG) DEVICE_TASK_NAME },
-                             {NP_Priority,   ETHER_PRI} ,
+                             {NP_Priority,   UNIT_PROCESS_PRIORITY} ,
                              {NP_FreeSeglist,FALSE} ,
                              {NP_StackSize,  8000},
                              {TAG_DONE,      0}};
@@ -811,7 +806,7 @@ struct DeviceDriverUnit *InitUnitProcess(ULONG s2unit, struct DeviceDriver *Ethe
                 InitSemaphore((void *)&etherUnit->eu_TrackLock);
                 NewList((struct List *)&etherUnit->eu_Track);
 
-                /* Try to read in our configuration file (again) */
+                /* Try to read in the configuration file (again) */
                 NetInterface * lowLevelDriver = initModule();
                 if(ReadConfig(EtherDevice, lowLevelDriver->getConfigFileName()))
                 {
@@ -1851,7 +1846,7 @@ void getmcaf(struct DeviceDriver *EtherDevice, ULONG * af)
    register UBYTE *cp, c;
    register ULONG crc;
    register int i, len;
-   struct MCAF_Adresse * ActNode;
+   struct MCAF_Address * ActNode;
 
    // * Set up multicast address filter by passing all multicast addresses
    // * through a crc generator, and then using the high order 6 bits as an
@@ -1892,76 +1887,71 @@ void getmcaf(struct DeviceDriver *EtherDevice, ULONG * af)
       ActNode = GET_NEXT(ActNode);
    }  
    ReleaseSemaphore((APTR)&EtherDevice->ed_MCAF_Lock);
-
 }
 ///
 
-///VOID DevCmdAddMulti(STDETHERARGS)
+/**
+ * Device command. Adds a new mutlicast address to the device driver...
+ * @param STDETHERARGS
+ * @param STDETHERARGS
+ * @param STDETHERARGS
+ */
 VOID DevCmdAddMulti(STDETHERARGS)
 {
-   // neue Multicastadresse
-   
-   // speicher fuer struktur besorgen
-   struct MCAF_Adresse * NewMCAF;
-   struct MCAF_Adresse * ActNode;
+   struct MCAF_Address * NewMCAF;
+   struct MCAF_Address * ActNode;
 
    print(VERBOSE_DEVICE,"*AddMulticast\n");
 
    ObtainSemaphore((APTR)&globEtherDevice->ed_MCAF_Lock);
-   //Gibts die Adresse bereits in der Liste ?
+
+   //Check if address already exists
    ActNode = GET_FIRST(globEtherDevice->ed_MCAF);
    while(IS_VALID(ActNode))
    { 
-      // ist das unsere Adresse ?
-      if (memcmp( ActNode->MCAF_Adr, ios2->ios2_SrcAddr, 6)==0)
+      if (0 == memcmp( ActNode->MCAF_Adr, ios2->ios2_SrcAddr, 6))
       {
-         //gibts bereits => ende !
+         //Address already exists. End.
          TermIO(ios2,globEtherDevice);
          goto end;
       }
       ActNode = GET_NEXT(ActNode);
    }
 
-   //Adresse existiert noch nicht!!
-
-   //Speicher besorgen
-   NewMCAF = (APTR)AllocMem(sizeof(struct MCAF_Adresse), MEMF_ANY);
+   //Create a new entry and add it to the list of used mulicast addresses
+   NewMCAF = (APTR)AllocMem(sizeof(struct MCAF_Address), MEMF_ANY);
    if (NewMCAF)
    { 
-      //Adresse kopieren
       copyEthernetAddress( ios2->ios2_SrcAddr, NewMCAF->MCAF_Adr);
    
-      // und in Liste der MCAF's 
       AddHead((APTR)&globEtherDevice->ed_MCAF,(APTR)NewMCAF);
-      print(VERBOSE_DEVICE," Neue Multicastadresse :\n");
+      print(VERBOSE_DEVICE," new multicast address :\n");
       PRINT_ETHERNET_ADDRESS(NewMCAF->MCAF_Adr);
       TermIO(ios2,globEtherDevice);
       
-      //TODO:
+      //TODO: hardware access
    }
    else      
-    {
-        //kein speicher mehr frei ????????
-        ios2->ios2_Req.io_Error = S2ERR_SOFTWARE;
-        ios2->ios2_WireError = S2WERR_GENERIC_ERROR;
-        TermIO(ios2,globEtherDevice);
-    }
+   {
+      ios2->ios2_Req.io_Error = S2ERR_SOFTWARE;
+      ios2->ios2_WireError = S2WERR_GENERIC_ERROR;
+      TermIO(ios2,globEtherDevice);
+   }
 
    end:
    ReleaseSemaphore((APTR)&globEtherDevice->ed_MCAF_Lock);
 }
-///
 
 ///VOID DevCmdRemMulti(STDETHERARGS)
 VOID DevCmdRemMulti(STDETHERARGS)
 {
    bool found = FALSE;
-   struct MCAF_Adresse * ActNode;
+   struct MCAF_Address * ActNode;
    int i;
 
    ObtainSemaphore((APTR)&globEtherDevice->ed_MCAF_Lock);
 
-   ActNode = (struct MCAF_Adresse * )GET_FIRST(globEtherDevice->ed_MCAF);
+   ActNode = (struct MCAF_Address * )GET_FIRST(globEtherDevice->ed_MCAF);
    print(VERBOSE_DEVICE,"*DelMulticast\n");
    while(IS_VALID(ActNode))
    {
@@ -1976,7 +1966,7 @@ VOID DevCmdRemMulti(STDETHERARGS)
       {
          //gefunden!
          Remove((APTR)ActNode);
-         FreeMem(ActNode, sizeof(struct MCAF_Adresse));
+         FreeMem(ActNode, sizeof(struct MCAF_Address));
          print(VERBOSE_DEVICE," MulticastAdresse wieder entfernt!\n");
          TermIO(ios2,globEtherDevice);               
          found = TRUE;
@@ -1995,8 +1985,7 @@ VOID DevCmdRemMulti(STDETHERARGS)
    }
    else
    {
-      //Multicastfilter aktualisieren wenn moeglich
-      //TODO:
+      //TODO: Deactivate multicast address
    }
 
    ReleaseSemaphore((APTR)&globEtherDevice->ed_MCAF_Lock);
