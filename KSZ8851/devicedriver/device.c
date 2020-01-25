@@ -64,7 +64,10 @@
 
 // ############################## GLOBALS #####################################
 
-const UBYTE BROADCAST_ADDRESS[6] = {0xff,0xff,0xff,0xff,0xff,0xff};
+const UBYTE BROADCAST_ADDRESS[6]    = {0xff,0xff,0xff,0xff,0xff,0xff};
+
+//Fallback ethernet address if nothing is no address is available
+const UBYTE FALLBACK_MAC_ADDRESS[6] = {0x02,0x34,0x56,0x78,0x9a,0xab};
 
 // ############################## LOCALS  #####################################
 
@@ -74,7 +77,7 @@ static const char * DEVICE_TASK_NAME = DEVICE_NAME " unit task";
 
 static ULONG AbortRequestAndRemove(struct MinList *, struct IOSana2Req *,struct DeviceDriver *,struct SignalSemaphore * lock);
 static void  AbortReqList(struct MinList *minlist,struct DeviceDriver * EtherDevice);
-static BOOL  ReadConfig(struct DeviceDriver *,  const char * sConfigFile);
+static BOOL ReadConfig( struct DeviceDriver *, struct DeviceDriverUnit *, const char * );
 static void DevProcEntry(void);
 static BOOL checkStackSpace(int minStackSize);
 void printEthernetAddress(unsigned char * addr);
@@ -263,10 +266,10 @@ void DeviceOpen(struct IOSana2Req *ios2,
             goto end;
       }
 
-      //get access to the low level driver
+      //Early access to the low level driver
       NetInterface * lowLevelDriver = initModule();
 
-      //Test and check hardware
+      //Probe for real hardware
       if (NO_ERROR == lowLevelDriver->probe(lowLevelDriver))
       {
          //Bring up unit device process...
@@ -806,29 +809,25 @@ struct DeviceDriverUnit *InitUnitProcess(ULONG s2unit, struct DeviceDriver *Ethe
                 InitSemaphore((void *)&etherUnit->eu_TrackLock);
                 NewList((struct List *)&etherUnit->eu_Track);
 
-                /* Try to read in the configuration file (again) */
-                NetInterface * lowLevelDriver = initModule();
-                if(ReadConfig(EtherDevice, lowLevelDriver->getConfigFileName()))
+                /* Start up the unit process (and wait for the reply) */
+                struct MsgPort * replyport = CreateMsgPort();
+                if( replyport )
                 {
-                    /* Start up the unit process */
-                    struct MsgPort * replyport = CreateMsgPort();
-                    if( replyport )
-                    {
-                        EtherDevice->ed_Startup.Msg.mn_ReplyPort = replyport;
-                        EtherDevice->ed_Startup.Device = (struct Device *) EtherDevice;
-                        EtherDevice->ed_Startup.Unit = (struct Unit *)etherUnit;
+                   EtherDevice->ed_Startup.Msg.mn_ReplyPort = replyport;
+                   EtherDevice->ed_Startup.Device = (struct Device *) EtherDevice;
+                   EtherDevice->ed_Startup.Unit = (struct Unit *)etherUnit;
 
-                        etherUnit->eu_Proc = CreateNewProc(NPTags);
-                        if(etherUnit->eu_Proc)
-                        {
-                            PutMsg((APTR)&etherUnit->eu_Proc->pr_MsgPort,
-                                   (APTR)&EtherDevice->ed_Startup);
-                            WaitPort((APTR)replyport);
-                            GetMsg((APTR)replyport);
-                        }                                                
-                        DeleteMsgPort((APTR)replyport);         
-                    }
+                   etherUnit->eu_Proc = CreateNewProc(NPTags);
+                   if(etherUnit->eu_Proc)
+                   {
+                      PutMsg((APTR)&etherUnit->eu_Proc->pr_MsgPort,
+                            (APTR)&EtherDevice->ed_Startup);
+                      WaitPort((APTR)replyport);
+                      GetMsg((APTR)replyport);
+                   }
+                   DeleteMsgPort((APTR)replyport);
                 }
+
                 if(!etherUnit->eu_Proc)
                 {
                     // The Unit process couldn't start for some reason, 
@@ -850,18 +849,18 @@ struct DeviceDriverUnit *InitUnitProcess(ULONG s2unit, struct DeviceDriver *Ethe
 /**
  * Attempt to read in and parse the driver's configuration file.
  *
- * The file is named by ENV:SANA2/etherbridge.config for all units
- *
- * @param EtherDevice
+ * @param etherDevice device driver
+ * @param sConfigFile configuration file name
  * @return
  */
-static BOOL ReadConfig( struct DeviceDriver *etherDevice, const char * sConfigFile )
+static BOOL ReadConfig( struct DeviceDriver *etherDevice, struct DeviceDriverUnit *deviceUnit, const char * sConfigFile )
 {
     DEBUGOUT((VERBOSE_DEVICE, "ReadConfigFile: %s\n", sConfigFile));
 
     RegistryInit( sConfigFile );
     {
        debugLevel = ReadKeyInt("DEBUGLEV" , false);
+       ReadKeyMacAddress("MAC", deviceUnit->eu_StAddr, FALLBACK_MAC_ADDRESS);
     }
     RegistryDestroy();
 
@@ -947,39 +946,45 @@ SAVEDS void DevProcEntry(void)
     etherUnit->eu_Unit.unit_MsgPort.mp_SigTask = (struct Task *)proc;
     etherUnit->eu_Unit.unit_MsgPort.mp_Flags   = PA_SIGNAL;
 
-    /* Initialize our Transmit Request lists. Because it's a Message port
-     * Forbid and Permit is used for locks. */
+    //Init the transmit packet list. At this time the unit process does not send
+    //the TX packets, so the unit process is not signaled for this anymore...
     etherUnit->eu_Tx = CreateMsgPort();
     /*etherUnit->eu_Tx->mp_SigBit  = AllocSignal(-1L);
     etherUnit->eu_Tx->mp_SigTask = (struct Task *)proc;
     etherUnit->eu_Tx->mp_Flags   = PA_SIGNAL;*/
 
-    /* alles in Ordnung */
+    /* Everything ok... */
     etherUnit->eu_Proc = proc;
+
+    //Init low level driver
+    etherUnit->eu_lowLevelDriver = initModule();
+    NetInterface * lowLevelDriver = etherUnit->eu_lowLevelDriver;
+
+    //Read in the default station address from hardware.
+    //The address can be overridden by the configuration file...
+    lowLevelDriver->getDefaultNetworkAddress(lowLevelDriver, (MacAddr*)etherUnit->eu_StAddr);
+
+    //Read-in the configuration file of the unit
+    ReadConfig(globEtherDevice, etherUnit, lowLevelDriver->getConfigFileName());
+
+    // Init DOS Notify for configuration file
+    const char * sConfigFile = lowLevelDriver->getConfigFileName();
+    configFileNotifySigBit                       = AllocSignal(-1);
+    configNotify.nr_Name                         = (char*)sConfigFile;
+    configNotify.nr_Flags                        = NRF_SEND_SIGNAL;
+    configNotify.nr_stuff.nr_Signal.nr_Task      = &etherUnit->eu_Proc->pr_Task;
+    configNotify.nr_stuff.nr_Signal.nr_SignalNum = configFileNotifySigBit;
+    StartNotify(&configNotify);
 
     /* Reply to our startup message */
     ReplyMsg((struct Message *)startupMessage);    
 
-    /* Check etherUnit->eu_Proc to see if everything went okay up
-       above. */
-    if(etherUnit->eu_Proc)    
     {
-        NetInterface * lowLevelDriver = initModule();
-        const char * sConfigFile = lowLevelDriver->getConfigFileName();
-    
-        // Init DOS Notify for etherbridge.config file
-        configFileNotifySigBit                       = AllocSignal(-1);
-        configNotify.nr_Name                         = (char*)sConfigFile;
-        configNotify.nr_Flags                        = NRF_SEND_SIGNAL;
-        configNotify.nr_stuff.nr_Signal.nr_Task      = &etherUnit->eu_Proc->pr_Task;
-        configNotify.nr_stuff.nr_Signal.nr_SignalNum = configFileNotifySigBit;
-        StartNotify(&configNotify);
-
-        DEBUGOUT((VERBOSE_DEVICE,"Unit Process: Enter service loop...\n"));
         //Unit Task Service Loop:
+        DEBUGOUT((VERBOSE_DEVICE,"Unit Process: Enter service loop...\n"));
         for(;;)
         {
-            //Waiting for any signal:
+            //Waiting for any signal
             receivedSignals = Wait(0xffffffff);
 
             /* Have we been signaled to shut down? */
@@ -988,19 +993,13 @@ SAVEDS void DevProcEntry(void)
                break;
             }
          
-            //lowlevel hardware activity?
+            // Low level hardware activity?
             if (receivedSignals & (1l << etherUnit->eu_lowLevelDriverSignalNumber)) {
                DEBUGOUT((VERBOSE_DEVICE,"Device Unit Process: process low level event.\n"));
                etherUnit->eu_lowLevelDriver->processEvents(etherUnit->eu_lowLevelDriver);
             }
 
-            //New packets to send?
-            /*if (receivedSignals & (1l << etherUnit->eu_Tx->mp_SigBit)) {
-               DEBUGOUT((VERBOSE_DEVICE,"Device Unit Process: Processing TX packets.\n"));
-               sendAllPackets(etherUnit,globEtherDevice);
-            }*/
-
-            //perform IORequest that should be done by the uni process...
+            // New IORequest to process by the unit process?
             if ((receivedSignals & (1l << etherUnit->eu_Unit.unit_MsgPort.mp_SigBit)))
             {
                DEBUGOUT((VERBOSE_DEVICE,"Device Unit Process: Processing new IORequests.\n"));
@@ -1010,11 +1009,11 @@ SAVEDS void DevProcEntry(void)
                }
             }
 
-            // Configuration file changed?
+            // Device configuration file changed?
             if (receivedSignals & (1L << configFileNotifySigBit))
             {
                DEBUGOUT((VERBOSE_DEVICE,"Device Unit Process: Config file changed.\n"));
-               ReadConfig(globEtherDevice, lowLevelDriver->getConfigFileName());
+               ReadConfig(globEtherDevice, etherUnit, lowLevelDriver->getConfigFileName());
             }
          }
 
@@ -1048,15 +1047,6 @@ SAVEDS void DevProcEntry(void)
          Forbid();
          Signal((struct Task *)etherUnit->eu_Proc,SIGBREAKF_CTRL_F);
     }
-    else
-    {
-        /* Something went wrong in the init code.  Drop out. */
-        if(etherUnit->eu_Unit.unit_MsgPort.mp_SigBit != -1)
-        {
-           FreeSignal(etherUnit->eu_Unit.unit_MsgPort.mp_SigBit);
-           etherUnit->eu_Unit.unit_MsgPort.mp_SigBit = -1;
-        }
-    } 
 }
 
 
@@ -1267,12 +1257,12 @@ VOID DevCmdWritePacket(STDETHERARGS)
         /* Make sure it's a legal length. */
         if(ios2->ios2_DataLength <= etherUnit->eu_MTU)
         {
-            /* Queue the Write Request for the unit process. */
+            /* Queue the Write Request */
             ios2->ios2_Req.io_Flags &= ~IOF_QUICK;
             ios2->ios2_Req.io_Message.mn_Node.ln_Type = NT_MESSAGE;
             PutMsg((APTR)etherUnit->eu_Tx,(APTR)ios2);
 
-            //Let's process packet is now!
+            /* now try to send all pending send packets... */
             sendAllPackets(etherUnit,etherDevice);
         }
         else
@@ -1652,17 +1642,14 @@ VOID DevCmdDeviceQuery(STDETHERARGS)
    TermIO(ios2, etherDevice);
 }
 
-/*
-** This function handles S2_GETSTATIONADDRESS commands.
-** This is usually the first command that is called by an stack.
-**
+/**
+* This function handles S2_GETSTATIONADDRESS commands.
+* This is usually the first command that is called by an stack.
 */
 VOID DevCmdGetStationAddress(STDETHERARGS)
 {
     DEBUGOUT((VERBOSE_DEVICE,"\n*DevCmdGetStationAddress\n"));
 
-    NetInterface * lowLevelDriver = (NetInterface*)initModule();
-    lowLevelDriver->getDefaultNetworkAddress(lowLevelDriver, (MacAddr*)(etherUnit->eu_StAddr));
     PRINT_ETHERNET_ADDRESS(etherUnit->eu_StAddr);
 
     copyEthernetAddress(etherUnit->eu_StAddr,ios2->ios2_SrcAddr);
@@ -1681,11 +1668,12 @@ VOID DevCmdConfigInterface(STDETHERARGS)
    PRINT_ETHERNET_ADDRESS(ios2->ios2_SrcAddr);
    DEBUGOUT((VERBOSE_DEVICE,")\n"));
 
-    /* Note: we may only be configured once. */
+    /* Note: we only be configured once. */
     if(!(etherUnit->eu_State & ETHERUF_CONFIG))
     {
-       /* Now sets our address to whatever the protocol stack says to use. */
+       /* Now sets the address to whatever the protocol stack says to use. */
        copyEthernetAddress(ios2->ios2_SrcAddr,etherUnit->eu_StAddr);
+       etherUnit->eu_lowLevelDriver->setNetworkAddress(etherUnit->eu_lowLevelDriver, (MacAddr*)etherUnit->eu_StAddr);
        etherUnit->eu_State |= ETHERUF_CONFIG;
    
        //Set device also online

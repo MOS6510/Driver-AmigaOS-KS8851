@@ -45,7 +45,8 @@
 #define UNIT_PROCESS_PRIORITY 0
 
 //Initialized Ethernet broadcast address
-extern const UBYTE BROADCAST_ADDRESS[6];
+#define ETHERNET_ADDRESS_SIZE 6
+extern const UBYTE BROADCAST_ADDRESS[ETHERNET_ADDRESS_SIZE];
 
 // --------------------------------- MACROS -----------------------------------------------------------------
 
@@ -80,7 +81,8 @@ struct DeviceDriverUnit
     UBYTE                  eu_UnitNum;       /* Unit number */
     UBYTE                  eu_Reserved0;     /* Padding */
     struct Device          *eu_Device;       /* Pointer to our device node */
-    UBYTE                  eu_StAddr[6];     /* Our current "hardware" address */
+    UBYTE                  eu_HWAddr[6];     /* The real station address of the driver from hardware */
+    UBYTE                  eu_StAddr[6];     /* The used station address of the driver */
     USHORT                 eu_Pad2;          /* Padding */
     ULONG                  eu_MTU;           /* Maximum Transmission Unit */
     ULONG                  eu_State;         /* Various state information */

@@ -4,8 +4,6 @@
  * of the GNU General Public License, incorporated herein by reference.
 */
 
-//Auto open libraries...
-
 #include "configfile.h"
 
 #include <proto/dos.h>
@@ -22,7 +20,7 @@
 #include <exec/alerts.h>
 
 #include <strings.h>
-
+#include "devdebug.h"
 
 
 #define LINE_MAX_LEN 255
@@ -159,4 +157,44 @@ long ReadKeyInt(const char * Key, long def )
         }
     }
     return def;
+}
+
+static uint32_t hexStringToU32(char * str) {
+   uint32_t val = 0;
+   while (*str) {
+      val <<= 4;
+      if (*str >= '0' && *str <= '9') {
+         val = val | (*str - '0');
+      } else if (*str >= 'a' && *str <= 'f') {
+         val = val | (*str - 'a' + 10);
+      } else if (*str >= 'A' && *str <= 'F') {
+         val = val | (*str - 'A' + 10);
+      }
+
+      ++str;
+   }
+   return val;
+}
+
+/**
+ * Reads a MAC address from configuration string...
+ * @param key
+ * @param dstMacAddress
+ * @param defaultAddress
+ * @return
+ */
+void ReadKeyMacAddress(const char * key, uint8_t * dstMacAddress, const uint8_t * defaultAddress ) {
+   const char * DELIM = ": ";
+   char * macString = ReadKeyStr(key, NULL);
+   if (macString) {
+      char * pch = strtok(macString, DELIM);
+      for (uint8_t i = 0; (i < 6) && pch != NULL; i++) {
+         dstMacAddress[i] = hexStringToU32(pch);
+         pch = strtok(NULL, DELIM);
+      }
+   } else {
+      for (uint8_t i = 0; i < 6; i++) {
+         dstMacAddress[i] = defaultAddress[i];
+      }
+   }
 }

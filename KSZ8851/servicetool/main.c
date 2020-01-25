@@ -208,7 +208,7 @@ void sendPackets(NetInterface * interface, int countOfPackets) {
    //maximal packet size, copy packet
    memcpy(buffer, TEST_PACKET, sizeof(TEST_PACKET));
    //set right mac address
-   memcpy(&buffer[6], &interface->macAddr.b[0], 6);
+   interface->getDefaultNetworkAddress(interface, (MacAddr*)&buffer[6]);
 
    int pktCount = 0;
 
@@ -285,13 +285,14 @@ int main(int argc, char * argv[])
    interface->linkChangeFunction = nicNotifyLinkChange;
 
    //First setup: Set a valid Ethernet mac address (not in EEPROM???)
-   MacAddr * address = &interface->macAddr;
-   address->b[0] = 0x02; //"Local + Individual address"
-   address->b[1] = 0x34;
-   address->b[2] = 0x56;
-   address->b[3] = 0x78;
-   address->b[4] = 0x9a;
-   address->b[5] = 0xbc;
+   MacAddr address;
+   interface->getDefaultNetworkAddress(interface, &address);
+   address.b[0] = 0x02; //=> 02 means: "Local + Individual address"
+   address.b[1] = 0x34;
+   address.b[2] = 0x56;
+   address.b[3] = 0x78;
+   address.b[4] = 0x9a;
+   address.b[5] = 0xbc;
 
    //Set the Multicast cache filter:
    MacFilterEntry multicastsFilter[1];

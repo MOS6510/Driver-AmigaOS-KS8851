@@ -93,6 +93,9 @@ typedef struct _NetInterface {
 
    bool (*sendPacketPossible)(struct _NetInterface *, uint16_t size);
    void (*getDefaultNetworkAddress)(struct _NetInterface *, MacAddr *);
+   //Set the network mac address that should be used...
+   void (*setNetworkAddress)(struct _NetInterface *, MacAddr *);
+
 
    const char * (*getConfigFileName)(void);
 
@@ -104,7 +107,7 @@ typedef struct _NetInterface {
    int linkSpeed;                         //Link speed (100 or 10 MBit)
    int duplexMode;
    bool linkState;                        //connected or not
-   MacAddr macAddr;                       //The used mac address of the NIC
+   //MacAddr macAddr;                       //The used mac address of the NIC
    MacFilterEntry macMulticastFilter[MAC_MULTICAST_FILTER_SIZE];
 
 } NetInterface;

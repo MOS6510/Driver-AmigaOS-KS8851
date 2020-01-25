@@ -218,9 +218,9 @@ error_t ksz8851Init(NetInterface *interface)
     }
 
     //Initialize MAC address
-    ksz8851WriteReg(interface, KSZ8851_REG_MARH, htons(interface->macAddr.w[0]));
-    ksz8851WriteReg(interface, KSZ8851_REG_MARM, htons(interface->macAddr.w[1]));
-    ksz8851WriteReg(interface, KSZ8851_REG_MARL, htons(interface->macAddr.w[2]));
+    //ksz8851WriteReg(interface, KSZ8851_REG_MARH, htons(interface->macAddr.w[0]));
+    //ksz8851WriteReg(interface, KSZ8851_REG_MARM, htons(interface->macAddr.w[1]));
+    //ksz8851WriteReg(interface, KSZ8851_REG_MARL, htons(interface->macAddr.w[2]));
 
     //Packets shorter than 64 bytes are padded and the CRC is automatically generated
     ksz8851WriteReg(interface, KSZ8851_REG_TXCR, TXCR_TXFCE | TXCR_TXPE | TXCR_TXCE);
@@ -1202,26 +1202,36 @@ void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length) {
     return context->sigNumber;
  }
 
-
+/**
+ * Delivers the current station address.
+ * @param interface
+ * @param addr destination address to copy mac address...
+ */
  static void ksz8851GetStationAddress(NetInterface * interface, MacAddr * addr) {
-     addr->w[0] = ntohs( ksz8851ReadReg(interface, KSZ8851_REG_MARH) );
-     addr->w[1] = ntohs( ksz8851ReadReg(interface, KSZ8851_REG_MARM) );
-     addr->w[2] = ntohs( ksz8851ReadReg(interface, KSZ8851_REG_MARL) );
-  }
+    //addr->w[0] = ntohs( ksz8851ReadReg(interface, KSZ8851_REG_MARH) );
+    //addr->w[1] = ntohs( ksz8851ReadReg(interface, KSZ8851_REG_MARM) );
+    //addr->w[2] = ntohs( ksz8851ReadReg(interface, KSZ8851_REG_MARL) );
+    MacAddr defaultStationAddress = { .b[0]=0x02,.b[1]=0x34,.b[2]=0x56,.b[3]=0x78,.b[4]=0x9a,.b[5]=0xbc};
+    memcpy(addr, &defaultStationAddress, 6);
+ }
+
+ /**
+  * Sets the station to be used
+  * @param interface
+  * @param addr
+  */
+ static void ksz8851SetNetworkAddress(NetInterface * interface, MacAddr * addr) {
+    Disable();
+    ksz8851WriteReg(interface, KSZ8851_REG_MARH, htons(addr->w[0]));
+    ksz8851WriteReg(interface, KSZ8851_REG_MARM, htons(addr->w[1]));
+    ksz8851WriteReg(interface, KSZ8851_REG_MARL, htons(addr->w[2]));
+    Enable();
+ }
 
  static bool macInit = false;
  static error_t init(NetInterface * interface) {
 
     if (!macInit) {
-
-       //Set a default MAC address:
-       interface->macAddr.b[0] = 0x02;
-       interface->macAddr.b[1] = 0x34;
-       interface->macAddr.b[2] = 0x56;
-       interface->macAddr.b[3] = 0x78;
-       interface->macAddr.b[4] = 0x9a;
-       interface->macAddr.b[5] = 0xbc;
-
        macInit = true;
     }
 
@@ -1254,6 +1264,7 @@ void ksz8851ReadFifo(NetInterface *interface, uint8_t *data, size_t length) {
        .sendPacket               = ksz8851SendPacket,
        .sendPacketCooked         = ksz8851SendPacketCooked,
        .getDefaultNetworkAddress = ksz8851GetStationAddress,
+       .setNetworkAddress        = ksz8851SetNetworkAddress,
        .getConfigFileName        = ksz8851GetConfigFileName,
        .nicContext = (Ksz8851Context*)&context,
  };
