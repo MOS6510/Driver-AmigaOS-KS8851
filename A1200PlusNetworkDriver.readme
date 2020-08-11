@@ -1,0 +1,49 @@
+Short:        SANA-2 Device Driver for Amiga 1200+ build-in Network
+Author:       Heiko.Pruessing At gmx.de (Heiko Pruessing)
+Uploader:     Heiko.Pruessing At gmx.de (Heiko Pruessing)
+Type:         driver/net
+Version:      1.0
+Requires:     A1200Plus, AmigaOS >= 2.0
+Architecture: m68k-amigaos
+
+
+DESCRIPTION:
+
+  This is a SANA-2 Amiga network device driver for the Amiga1200 Plus 
+  build-in network chip ("KSZ8851"). You can always get the newest version 
+  from:
+  
+     https://github.com/MOS6510/Driver-AmigaOS-KS8851
+
+  You may also want to look on the pages of the Amiga1200 Plus project:
+ 
+     http://www.amigaclub.be/projects/amiga1200plus
+
+
+INSTALLATION:
+
+  Execute the small Amiga shell script "install" from Workbench which
+  copies anything to the right place or copy it manually:
+  
+  network/ksz8851.device.020 => devs:networks/ksz8851.device
+  ksz8851.config             => env:sana2/
+  ksz8851.config             => envarc:sana2/
+
+
+  The packages comes with a Roadshow Stack configuration files.
+  If you want to use it, you also need to copy 2 additional files (or use
+  the install script): 
+
+  ksz8851                    => devs:NetInterfaces/ksz8851
+  ksz8851.info               => devs:NetInterfaces/ksz8851.info
+
+  You can of course use the device driver with any other Amiga TCP stack 
+  like Miami or AmiTCP.
+  
+  Have fun!
+  Heiko
+
+
+HISTORY:
+
+  V1.0 - First Aminet release.
