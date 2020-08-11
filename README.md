@@ -30,7 +30,7 @@ Current beta Version (1.0 build 3) seems stable. Work is still in progress...
 - No AmigaOS installer script yet (only a small shell script which copies the files into the right place)
 
 # Binary Distribution
-- Binary versions will be available soon.
+- The latest release version can be downloaded [here: V1.0](https://github.com/MOS6510/Driver-AmigaOS-KS8851/releases/latest)
 
 # Installation 
 The device is called "ksz8851.device" and must be installed in "devs:networks" of the AmigaOS installation.
