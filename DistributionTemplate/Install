@@ -1,54 +1,36 @@
-; Installer for Etherbridge Device.
-; Copyright (c) 2019 Heiko Pruessing.
-; $VER: "Install Etherbridge" 2.01 (26.1.2019)
+; Installer script for Amiga1200 Plus Network Device Driver ("ksz8851").
+; Copyright (c) 2020 Heiko Pruessing.
+; $VER: "Install ksz8851 network device driver" 1.0 (03.10.2020)
 
 ; ----------------------------- CONSTS ----------------------------------------
 
-(set #current_version "2.01")
+(set #current_version "1.0")
 
-(set #dev-name "etherbridge.device")
+(set #dev-name "ksz8851.device")
 (set @default-dest "RAM:")
-(set #pc-install-path "C:\\ETHBRDGE")
-(set #config_file_env    "env:sana2/etherbridge.config")
-(set #config_file_envarc "envarc:sana2/etherbridge.config")
+(set #config_file_env       "env:sana2/ksz8851.config")
+(set #config_file_envarc "envarc:sana2/ksz8851.config")
+(set #src_dev_name        "network/ksz8851.device.020")
 
 (set #msg-os-too-low    "AmigaOS 2.04 or greater is required.")
-(set #msg-janus-too-old "Janus Software 2.1 required. Please install the newest Janus software first and run again.")
-(set #msg-no-mui-installed "No MUI found! MUI is needed by the configuration program 'EtherPrefs'. You may install the device without EtherPrefs.")
 (set #msg-help-copy-lib "Copy the SANA2 Network Device Driver to the system.")
 
 (set #msg-final-installed
    (cat "Installation complete!\n\n"
-      "Etherbridge 2.0 is on your system!\n\nMay the force be with you! :-)\n"
+      "ksz8851 device driver 1.0 is on your system!\n\nMay the force be with you! :-)\n"
    )
 )
 
 (set #wrongversion
-(cat "You have an old version of the program 'Installer' "
-     "on your Amiga!\n\nThe installation procedure needs at least Installer 42.9.\n\n"
-     "Please check your configuration!"
+(cat "You have an old version of 'Installer' installed."
+     "\n\nThe installation procedure needs at least Amiga Installer 42.9.\n\n"
+     "Please check your configuration and try again!"
 ))
 
-(set #msg-install-pc-parts 
-	(cat "Now the PC parts of Etherbridge will be installed on your PC in path\n\n "
-	     #pc-install-path "\n\n"
-	     "For this, Janus 'AREAD' command must be in path on PC side. "
-	     "Be sure your PC had finished booting and no other program is currently running on! "
-	     "Depending on your Bridgeboard this will take some time (1-2 minutes)! "
-	     "Do not break up!"
-	     "\n\n"
-	     "Click 'YES' if ready or 'NO' to skip"  
-	)
-)
-
-(set #msg-install-pc-parts-help
-   (cat "Some files will be copied to PC path '" #pc-install-path "' The janus tool AREAD must be present on path. If not please install manually, check documentation." )
-)
-
-(set #intro (cat "\nEtherbridge Network Driver " #current_version 
-   "\n====================================\n© 1997-1999,2013,2019 Heiko Prüssing\n\n" 
-   "Welcome to the installation program of Etherbridge.\n"
-   "Use this tool to install Etherbridge on your system or to update a previously installed release.")
+(set #intro (cat "\nAmiga1200 Plus Network Device Driver " #current_version 
+   "\n====================================\n(c) 2019 Heiko Pruessing\n" 
+   "Welcome to the installation program of Amiga1200 Plus network device driver ('ksz8851.device'). "
+   "Use this tool to install the device driver on your Amiga system or to update a previously installed release.")
 )   
 
 
@@ -64,82 +46,47 @@
   )
 )
 
-
 ; Check OS version isn't too old
 (if (< (/ (getversion) 65536) 37)
    (abort #msg-os-too-low)
-)
-
-; Check right version of Janus Library. Should be latest V36.83
-(set vernum (getversion "sys:expansion/janus.library"))
-(if (< vernum 2359379) ; => last version from Commodore: V36.83 
-   (abort  #msg-janus-too-old)
-)
-
-;Check that MUI is installed. Needed by the config program EtherPrefs.
-(if (< (getversion "LIBS:muimaster.library") 917611) ; V14.107
-   (abort  #msg-no-mui-installed)
 )
 
 (complete 0)
       
 ; ###### Install Files ########      
 
-;Install EtherPrefs to sys:Prefs
-(copyfiles
-   (prompt "Copying the configuration application.")
-   (help @copyfiles-help)
-   (source "prefs")
-   (dest "SYS:Prefs")
-   (pattern "EtherPrefs#?")
-   (files)
-   (confirm)
-   (infos)
-)
-
 ;
 ; Install Device
-; Pick the right CPU device and copy it to the destination...
-(set installed_cpu (database "cpu") )
-(set #default_cpu_choice 0)
-(if ( >= installed_cpu "68020") (set #default_cpu_choice 1) )
-(if ( >= installed_cpu "68040") (set #default_cpu_choice 2) )
-(if ( >= installed_cpu "68060") (set #default_cpu_choice 3) )
-(set #devicetype 
-   (askchoice 
-      (choices "68000" "68020" "68040" "68060")  
-      (prompt "Select processor optimized device version (default: The installer chooses the best for your system)") 
-      (help "Some processor optimized devices are available. Pick the right one you want to use.")
-      (default #default_cpu_choice)
-   )   
-)
-(set #src_dev_name (select #devicetype "000" "020" "040" "060") )
-(set #src_dev_name (cat "devs/networks/etherbridge.device." #src_dev_name) )
-(debug #src_dev_name)
+;
 (copylib 
 	(prompt "Installing the network device driver.")
 	(help @copylib-help)
    (source #src_dev_name)
    (dest "DEVS:networks")
-   (newname "etherbridge.device")
+   (newname "ksz8851.device")
    (confirm)
 )
+
+(complete 30)
 
 ; Copy new default configuration file(s) only if none exists
 (if ( = (exists #config_file_env) 0 ) 
    (
 		(copyfiles
-		   (source "envarc/sana2/etherbridge.config")
+		   (source "ksz8851.config")
 		   (dest "env:sana2")
 		   (optional "force" "askuser")
 		   (confirm)
 		)
    ) 
 )
+
+(complete 60)
+
 (if ( = (exists #config_file_envarc) 0 ) 
    (
       (copyfiles
-         (source "envarc/sana2/etherbridge.config")
+         (source "ksz8851.config")
          (dest "envarc:sana2")
          (confirm)
          (files)
@@ -147,9 +94,9 @@
    ) 
 )
 
-(complete 40)
+(complete 90)
 
-; Install Roadshow configuration
+; Install Roadshow configuration if present
 (if ( = (exists "Devs:NetInterfaces" (noreq) ) 2 )
    (
 		(copyfiles
@@ -165,47 +112,6 @@
 		)
    ) 
 )
- 
- 
-
-;
-; Install PC part
-;
-(complete 50)
-(if (askbool (prompt #msg-install-pc-parts) (help #msg-install-pc-parts-help) (default 1))
-   (
-		(copyfiles
-			(prompt (cat "Install the PC files to " #pc-install-path) )
-			(help @copyfiles-help)
-		   (source "pc")
-		   (dest "T:pc")
-		   (pattern "#?")
-		   (files)
-		)
-		(complete 85)
-		; Run the command to install all...
-		(set #installpccmd (cat "runpccmd \"aread T:pc/~(#?.BAT) " #pc-install-path " /b\"") )
-		(run #installpccmd )
-		;Wait/delay until command is finished...
-		(run ( cat "runpccmd \"dir " #pc-install-path "       \"") )   ; send Space + LF only
-   )
-)
-(complete 90)
-
-
-;
-; Start EtherPrefs (default) at the end of the installation
-;
-(set #start_etherprefs
-	(askbool
-		(prompt "Do you want to configure Etherbridge now?\n('SYS:Prefs/EtherPrefs' will be started...)")
-		(help "The config program will be started ('SYS:Prefs/EtherPrefs').")
-		(choices "Start EtherPrefs now" "No, configure later")
-		(default 0)
-	)
-)
-(if (= #start_etherprefs 1) (execute "executePrefs.ash") )
-
 
 ;
 ; Finish Installation

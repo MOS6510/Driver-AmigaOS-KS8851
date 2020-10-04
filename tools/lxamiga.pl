@@ -27,7 +27,7 @@ my $serial;
 my $socket;
 my $serport 	= "/dev/tty.usbserial-FTT1QFHG";
 my $serbaud		= 19200; #57600; #19200;
-my $iphost		= "192.168.18.37";
+my $iphost		= "192.168.18.36";
 my $ipport		= "356";
 my $password	= "AExplorer";
 my $maxlen		= 512;
@@ -164,6 +164,7 @@ sub read_serial
 
 #	$serial->read_const_time(1000);
 	$serial->read_char_time(350);
+#	$serial->read_char_time(1000);
 	my $read = $serial->read($len);
 	print "="x73,"\n" if $args{v};
 	print "RECEIVED ".(length($read))."/$len BYTES:\n" if $args{v};

@@ -54,14 +54,13 @@ install:
 		$(AMIGA_EXPLORER) -s $(BUILDDIR)/$(DEVICE_NAME).$(ARCH) DEVS:/networks/ksz8851.device	
      
 builddir:
-	@echo "Create build dir..." 
 	@mkdir -p $(BUILDDIR)
 	@mkdir -p $(BUILDDIR)/hwl
 	
 # This is a dummy lib for a dummy hardware...
 $(BUILDDIR)/libdummyhwl.a: $(OBJS_HWL)
 		@echo "Create Linking Library..." $@
-		$(AR) rcs $@ $^
+		@$(AR) rcs $@ $^
 
 # Creates distribution (and build all architechtures and LHA file at the end)
 distribution:	
@@ -73,9 +72,9 @@ distribution:
 	
 $(BUILDDIR)/$(DEVICE_NAME).$(ARCH):	$(OBJS)
 		@echo "Linking       " $@
-		$(LD) $^ $(HWL_LIB_PATH) -o $@ $(LDOPTS) 
+		@$(LD) $^ $(HWL_LIB_PATH) -o $@ $(LDOPTS) 
 		@strings $@ | grep '$$VER'
-		$(MAKE) addToAdf
+		@$(MAKE) addToAdf
 		@ls -la $@
 		
 clean:
@@ -84,7 +83,7 @@ clean:
 
 $(BUILDDIR)/%.o:%.c
 	@echo "Compiling C   " $< " (68"$(ARCH)")"
-	$(CC) -c $(CFLAGS) -o $@ $< 
+	@$(CC) -c $(CFLAGS) -o $@ $< 
 
 .c.s: $(HDR)
 	@echo "Compiling C (only to ASM) " $< " (68"$(ARCH)")"

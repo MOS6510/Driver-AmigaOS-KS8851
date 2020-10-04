@@ -10,29 +10,25 @@ Architecture: m68k-amigaos
 DESCRIPTION:
 
   This is a SANA-2 Amiga network device driver for the Amiga1200 Plus 
-  build-in network chip ("KSZ8851"). You can always get the newest version 
-  from:
+  build-in network chip ("KSZ8851"). You can get the source or the
+  newest version from:
   
      https://github.com/MOS6510/Driver-AmigaOS-KS8851
 
-  You may also want to look on the pages of the Amiga1200 Plus project:
+
+  You may also want to look on the pages of the great Amiga1200 Plus project:
  
      http://www.amigaclub.be/projects/amiga1200plus
 
 
 INSTALLATION:
 
-  Execute the small Amiga shell script "install" from Workbench which
-  copies anything to the right place or copy it manually:
+  Execute the installer script from Workbench or copy all files manually:
   
   network/ksz8851.device.020 => devs:networks/ksz8851.device
-  ksz8851.config             => env:sana2/
-  ksz8851.config             => envarc:sana2/
+  ksz8851.config             => envarc:sana2/ + env:sana2/
 
-
-  The packages comes with a Roadshow Stack configuration files.
-  If you want to use it, you also need to copy 2 additional files (or use
-  the install script): 
+  The package also comes with a Roadshow TCP stack configuration file: 
 
   ksz8851                    => devs:NetInterfaces/ksz8851
   ksz8851.info               => devs:NetInterfaces/ksz8851.info

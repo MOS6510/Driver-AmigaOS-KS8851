@@ -1,19 +1,20 @@
 #!/bin/sh
+# Creates LHA distribution file.
 
-# 1. Parameter LHA file
+# 1. Parameter: LHA archive file to create
 
-DISTDIR=build/LhaDistribution
+DISTDIRNAME=A1200PlusNetworkDriver
+DISTDIR=build/${DISTDIRNAME}
 ARCH=020
 
+echo "Build LHA distribution:"
 mkdir -p ${DISTDIR}
 cp -r DistributionTemplate/* ${DISTDIR}
 cp KSZ8851/devicedriver/build/build-${ARCH}/ksz8851.device.${ARCH} ${DISTDIR}/network/
+mv ${DISTDIR}/Folder.info ${DISTDIR}.info 
 
-#rm -fr ${DISTDIR}
-
-cd ${DISTDIR}
-lha c --ignore-mac-files $1 *
+cd ${DISTDIR}/..
+lha c --ignore-mac-files $1 ${DISTDIRNAME}*
 cd ../..
-cp A1200PlusNetworkDriver.readme build
 lha l $1
 	

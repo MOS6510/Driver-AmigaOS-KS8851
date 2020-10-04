@@ -31,21 +31,12 @@ LDFLAGS += -L$(BUILDDIR)
 
 all: builddir $(BUILDDIR)/ksz8851
 
-addToADF:
-	#@echo "Create ADF file..." 
-	#@$(XDFTOOL) $(ADFIMAGE) format "Amiga1200+Tools" + makedir "network" || true
-	#@$(XDFTOOL) $(ADFIMAGE) delete "network/ksz8851" || true
-	#@$(XDFTOOL) $(ADFIMAGE) write $(BUILDDIR)/ksz8851 "network"
-
-	
 builddir:
-	@echo "Create build directories..."
 	@mkdir -p $(BUILDDIR)
 		
 $(BUILDDIR)/ksz8851:	$(OBJ_MAIN) $(BUILDDIR)/libksz8851.a
 		@echo "Linking       " $@
 		@$(LD) $^ $(LDFLAGS) -o $@ -lksz8851 -Wl,-Map,$@.map 
-		$(MAKE) addToADF
 		
 $(BUILDDIR)/libksz8851.a: $(OBJ_LIB)
 		@echo "Create Linking Library " $@ 
@@ -67,7 +58,7 @@ clean:
 #.c.o:
 $(BUILDDIR)/%.o:%.c $(HDR)
 	@echo "Compiling C   " $< " (cpu=68"$(ARCH)")"
-	$(CC) -c $(CFLAGS) -o $@ $< 
+	@$(CC) -c $(CFLAGS) -o $@ $< 
 
 #.c.s:
 $(BUILDDIR)/%.s:%.c $(HDR)

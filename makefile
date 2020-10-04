@@ -75,8 +75,8 @@ clean:
 createADFDistribution:
 	@$(XDFTOOL) $(ADFIMAGE) write DistributionTemplate/install
 	@$(XDFTOOL) $(ADFIMAGE) write DistributionTemplate/install.info
-	@$(XDFTOOL) $(ADFIMAGE) write DistributionTemplate/ksz8851      
-	@$(XDFTOOL) $(ADFIMAGE) write DistributionTemplate/ksz8851.info
+	@$(XDFTOOL) $(ADFIMAGE) write DistributionTemplate/Roadshow/ksz8851      
+	@$(XDFTOOL) $(ADFIMAGE) write DistributionTemplate/Roadshow/ksz8851.info
 	@$(XDFTOOL) $(ADFIMAGE) write DistributionTemplate/ksz8851.config
 	@$(XDFTOOL) $(ADFIMAGE) list
 	
