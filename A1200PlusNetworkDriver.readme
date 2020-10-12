@@ -23,7 +23,7 @@ DESCRIPTION:
 
 INSTALLATION:
 
-  Execute the installer script from Workbench or copy all files manually:
+  Execute the Amiga installer script from Workbench or copy all files manually:
   
   network/ksz8851.device.020 => devs:networks/ksz8851.device
   ksz8851.config             => envarc:sana2/ + env:sana2/

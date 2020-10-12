@@ -14,7 +14,7 @@ cp KSZ8851/devicedriver/build/build-${ARCH}/ksz8851.device.${ARCH} ${DISTDIR}/ne
 mv ${DISTDIR}/Folder.info ${DISTDIR}.info 
 
 cd ${DISTDIR}/..
-lha c --ignore-mac-files $1 ${DISTDIRNAME}*
+lha c --ignore-mac-files -x *.uaem $1 ${DISTDIRNAME}*
 cd ../..
 lha l $1
 	

@@ -17,7 +17,9 @@
 
 (set #msg-final-installed
    (cat "Installation complete!\n\n"
-      "ksz8851 device driver 1.0 is on your system!\n\nMay the force be with you! :-)\n"
+      "The Amiga1200Plus network driver ('ksz8851.device') is installed successfully! "
+      "You can now use the driver with your preferred TCP stack."
+      "\n\nMay the force be with you! :-)\n"
    )
 )
 
@@ -28,7 +30,7 @@
 ))
 
 (set #intro (cat "\nAmiga1200 Plus Network Device Driver " #current_version 
-   "\n====================================\n(c) 2019 Heiko Pruessing\n" 
+   "\n========================================\n(c) 2020 Heiko Pruessing\n\n" 
    "Welcome to the installation program of Amiga1200 Plus network device driver ('ksz8851.device'). "
    "Use this tool to install the device driver on your Amiga system or to update a previously installed release.")
 )   
